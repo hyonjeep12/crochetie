@@ -1,0 +1,13 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 하단 네비게이션 safe area */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* 모바일 스크롤 개선 */
+body {
+  -webkit-overflow-scrolling: touch;
+}
