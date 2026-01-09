@@ -59,13 +59,53 @@ export default function KnittingMode({ recipe, project, onClose }) {
   const rows = parsedRows.length > 0 ? parsedRows.map(r => r.text) : (recipe?.description ? recipe.description.split('\n').filter(line => line.trim()) : []);
 
   useEffect(() => {
-    // 갤러리 모드일 때 스크롤 방지
+    // 갤러리 모드일 때 스크롤 방지 및 화면 방향 변경
     if (mode === 'gallery') {
       document.documentElement.style.overflow = 'hidden';
       document.body.style.overflow = 'hidden';
+      
+      // 화면 방향을 가로 모드로 변경
+      const lockOrientation = async () => {
+        try {
+          // Screen Orientation API 사용
+          if (screen.orientation && screen.orientation.lock) {
+            await screen.orientation.lock('landscape');
+          } else if (screen.lockOrientation) {
+            // 구형 브라우저 지원
+            screen.lockOrientation('landscape');
+          } else if (screen.mozLockOrientation) {
+            // Firefox 지원
+            screen.mozLockOrientation('landscape');
+          } else if (screen.msLockOrientation) {
+            // IE/Edge 지원
+            screen.msLockOrientation('landscape');
+          }
+        } catch (err) {
+          // 화면 방향 잠금이 실패해도 계속 진행 (일부 브라우저/디바이스에서 제한될 수 있음)
+          console.log('화면 방향 잠금 실패:', err);
+        }
+      };
+      
+      lockOrientation();
+      
       return () => {
         document.documentElement.style.overflow = '';
         document.body.style.overflow = '';
+        
+        // 화면 방향 잠금 해제
+        try {
+          if (screen.orientation && screen.orientation.unlock) {
+            screen.orientation.unlock();
+          } else if (screen.unlockOrientation) {
+            screen.unlockOrientation();
+          } else if (screen.mozUnlockOrientation) {
+            screen.mozUnlockOrientation();
+          } else if (screen.msUnlockOrientation) {
+            screen.msUnlockOrientation();
+          }
+        } catch (err) {
+          console.log('화면 방향 잠금 해제 실패:', err);
+        }
       };
     }
   }, [mode]);
@@ -350,19 +390,23 @@ export default function KnittingMode({ recipe, project, onClose }) {
                               setCurrentRowIndex(index);
                               setDrawerOpen(false);
                             }}
-                            className={`w-full text-left px-3 py-1.5 rounded text-sm transition-colors ${
+                            className={`w-full text-left px-3 py-1.5 rounded text-sm transition-colors flex items-center gap-2 ${
                               isActive
                                 ? 'bg-white text-black font-medium'
                                 : isCompleted
-                                ? 'text-gray-400'
+                                ? 'text-gray-600 hover:bg-gray-50'
                                 : 'text-gray-600 hover:bg-gray-50'
                             }`}
                           >
-                            R{rowNumber} {rowData.text.includes('줄이기') && '줄이기'}
-                            {rowData.text.includes('늘리기') && '늘리기'}
-                            {!isActive && !isCompleted && (
-                              <span className="ml-2 text-blue-500">●</span>
-                            )}
+                            <span className={`w-4 h-4 flex items-center justify-center ${
+                              isCompleted ? 'text-green-500' : 'text-gray-300'
+                            }`}>
+                              {isCompleted ? '✓' : ''}
+                            </span>
+                            <span>
+                              R{rowNumber} {rowData.text.includes('줄이기') && '줄이기'}
+                              {rowData.text.includes('늘리기') && '늘리기'}
+                            </span>
                           </button>
                         );
                       })}
@@ -377,20 +421,15 @@ export default function KnittingMode({ recipe, project, onClose }) {
 
       {/* 메인 콘텐츠 */}
       <div className="flex-1 flex flex-col">
-        {/* 헤더 */}
-        <div className="sticky top-0 bg-transparent px-4 py-3 flex items-center justify-between z-20">
+        {/* 헤더 - 플로팅 버튼들만 */}
+        <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-20 pointer-events-none">
           <button
             onClick={() => setDrawerOpen(!drawerOpen)}
-            className="text-white hover:text-gray-200 text-xl bg-black/30 backdrop-blur-sm rounded-full w-10 h-10 flex items-center justify-center"
+            className="text-white hover:text-gray-200 text-xl bg-black/30 backdrop-blur-sm rounded-full w-10 h-10 flex items-center justify-center pointer-events-auto"
           >
             ☰
           </button>
-          {!drawerOpen && parsedRows.length > 0 && parsedRows[currentRowIndex] && (
-            <div className="flex items-center gap-2 text-white bg-black/30 backdrop-blur-sm px-3 py-1.5 rounded-full">
-              <span className="text-sm font-medium">{parsedRows[currentRowIndex].section}</span>
-            </div>
-          )}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 pointer-events-auto">
             <button
               onClick={() => setMode('list')}
               className="text-white hover:text-gray-200 text-sm bg-black/30 backdrop-blur-sm px-3 py-1.5 rounded-full"
@@ -443,8 +482,29 @@ export default function KnittingMode({ recipe, project, onClose }) {
                 className="min-w-full h-full flex items-center justify-center overflow-hidden bg-gray-900"
                 style={{ touchAction: 'pan-x' }}
               >
-                {/* 배경 비디오/이미지 */}
+                {/* 배경 이미지 - 뜨개질 손 이미지 */}
                 <div className="absolute inset-0">
+                  <img
+                    src="/crochet-hands-bg.jpg"
+                    alt="뜨개질 배경"
+                    className="w-full h-full object-cover"
+                    style={{ 
+                      objectFit: 'cover',
+                      opacity: 0.3
+                    }}
+                    onError={(e) => {
+                      // 이미지가 없으면 그라데이션 배경으로 대체
+                      e.target.style.display = 'none';
+                      const parent = e.target.parentElement;
+                      if (parent) {
+                        parent.className = 'absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900';
+                      }
+                    }}
+                  />
+                </div>
+                
+                {/* 도안 이미지/비디오 오버레이 */}
+                <div className="absolute inset-0 z-0">
                   {recipe?.pattern_images && recipe.pattern_images[index] ? (
                     <img
                       src={recipe.pattern_images[index]}
@@ -467,9 +527,7 @@ export default function KnittingMode({ recipe, project, onClose }) {
                         className="w-full h-full"
                       />
                     </div>
-                  ) : (
-                    <div className="w-full h-full bg-gradient-to-br from-gray-800 to-gray-900"></div>
-                  )}
+                  ) : null}
                 </div>
               </div>
             ))}
