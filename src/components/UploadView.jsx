@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { parseYouTubeUrl, getYouTubeEmbedUrl, getYouTubeThumbnail } from '../utils/urlParser';
 import { saveRecipe } from '../utils/storage';
 
@@ -8,13 +8,58 @@ export default function UploadView({ onUploadComplete }) {
   const [videoEmbedUrl, setVideoEmbedUrl] = useState('');
   const [isVideoLoaded, setIsVideoLoaded] = useState(false);
   const [capturedPatterns, setCapturedPatterns] = useState([]);
+  const [savedPatterns, setSavedPatterns] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [title, setTitle] = useState('');
   const [thumbnailUrl, setThumbnailUrl] = useState('');
   const [additionalNote, setAdditionalNote] = useState('');
   const [isPublic, setIsPublic] = useState(true);
+  const [bottomSheetOpen, setBottomSheetOpen] = useState(false);
+  const [currentPattern, setCurrentPattern] = useState(null);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [player, setPlayer] = useState(null);
   
   const videoRef = useRef(null);
+  const playerRef = useRef(null);
+
+  // YouTube IFrame API 로드 및 플레이어 초기화
+  useEffect(() => {
+    if (isVideoLoaded && videoId && videoRef.current && window.YT && window.YT.Player) {
+      // 기존 플레이어가 있으면 제거
+      if (playerRef.current) {
+        try {
+          playerRef.current.destroy();
+        } catch (e) {
+          console.log('기존 플레이어 제거 실패:', e);
+        }
+      }
+
+      // 새 플레이어 생성
+      const newPlayer = new window.YT.Player(videoRef.current, {
+        videoId: videoId,
+        playerVars: {
+          autoplay: 0,
+          controls: 1,
+        },
+        events: {
+          onReady: (event) => {
+            setPlayer(event.target);
+          },
+        },
+      });
+      playerRef.current = newPlayer;
+
+      return () => {
+        if (playerRef.current) {
+          try {
+            playerRef.current.destroy();
+          } catch (e) {
+            console.log('플레이어 정리 실패:', e);
+          }
+        }
+      };
+    }
+  }, [isVideoLoaded, videoId]);
 
   const handleLoadVideo = () => {
     if (!youtubeUrl.trim()) return;
@@ -22,7 +67,6 @@ export default function UploadView({ onUploadComplete }) {
     const id = parseYouTubeUrl(youtubeUrl);
     if (id) {
       setVideoId(id);
-      setVideoEmbedUrl(getYouTubeEmbedUrl(id));
       setThumbnailUrl(getYouTubeThumbnail(id));
       setIsVideoLoaded(true);
     } else {
@@ -30,41 +74,76 @@ export default function UploadView({ onUploadComplete }) {
     }
   };
 
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const getThumbnailAtTime = (videoId, time) => {
+    return `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
+  };
+
   const handleCapture = () => {
+    if (!player) return;
+    
+    // 현재 재생 시간 가져오기
+    const time = player.getCurrentTime();
+    setCurrentTime(time);
+    
+    // 영상 일시정지
+    player.pauseVideo();
+    
+    // 새 패턴 생성
     const newPattern = {
       id: Date.now(),
       rowNumber: '',
       pattern: '',
       note: '',
-      isSaved: false,
+      captureTime: time,
+      thumbnail: getThumbnailAtTime(videoId, time),
     };
-    setCapturedPatterns(prev => [...prev, newPattern]);
+    
+    setCurrentPattern(newPattern);
+    setBottomSheetOpen(true);
   };
 
-  const handleSavePattern = (id) => {
-    setCapturedPatterns(prev => 
-      prev.map(p => 
-        p.id === id ? { ...p, isSaved: true } : p
-      )
-    );
+  const handleSavePattern = () => {
+    if (!currentPattern || !currentPattern.pattern.trim()) {
+      alert('도안 내용을 입력해주세요.');
+      return;
+    }
+
+    // 저장된 패턴에 추가
+    const savedPattern = {
+      ...currentPattern,
+      isSaved: true,
+    };
     
-    // 영상 재생 - iframe을 다시 로드하여 재생
-    if (videoId) {
-      const newEmbedUrl = getYouTubeEmbedUrl(videoId) + '?autoplay=1';
-      setVideoEmbedUrl(newEmbedUrl);
+    setSavedPatterns(prev => [...prev, savedPattern]);
+    
+    // 바텀시트 닫기
+    setBottomSheetOpen(false);
+    setCurrentPattern(null);
+    
+    // 영상 재생 (멈춘 시간부터)
+    if (player) {
+      player.seekTo(currentTime, true);
+      player.playVideo();
     }
   };
 
-  const handleUpdatePattern = (id, field, value) => {
-    setCapturedPatterns(prev =>
-      prev.map(p =>
-        p.id === id ? { ...p, [field]: value } : p
-      )
-    );
+  const handleUpdateCurrentPattern = (field, value) => {
+    if (currentPattern) {
+      setCurrentPattern(prev => ({
+        ...prev,
+        [field]: value,
+      }));
+    }
   };
 
-  const handleDeletePattern = (id) => {
-    setCapturedPatterns(prev => prev.filter(p => p.id !== id));
+  const handleDeleteSavedPattern = (id) => {
+    setSavedPatterns(prev => prev.filter(p => p.id !== id));
   };
 
   const handleComplete = async () => {
@@ -73,14 +152,8 @@ export default function UploadView({ onUploadComplete }) {
       return;
     }
 
-    if (capturedPatterns.length === 0) {
+    if (savedPatterns.length === 0) {
       alert('최소 하나의 도안을 등록해주세요.');
-      return;
-    }
-
-    const unsavedPatterns = capturedPatterns.filter(p => !p.isSaved);
-    if (unsavedPatterns.length > 0) {
-      alert('저장되지 않은 도안이 있습니다. 모든 도안을 저장해주세요.');
       return;
     }
 
@@ -88,7 +161,7 @@ export default function UploadView({ onUploadComplete }) {
 
     try {
       // 도안 설명 생성 (Row 번호 순서대로 정렬)
-      const sortedPatterns = [...capturedPatterns].sort((a, b) => {
+      const sortedPatterns = [...savedPatterns].sort((a, b) => {
         const aNum = parseInt(a.rowNumber) || 0;
         const bNum = parseInt(b.rowNumber) || 0;
         return aNum - bNum;
@@ -119,11 +192,21 @@ export default function UploadView({ onUploadComplete }) {
       setVideoId(null);
       setVideoEmbedUrl('');
       setIsVideoLoaded(false);
-      setCapturedPatterns([]);
+      setSavedPatterns([]);
       setTitle('');
       setThumbnailUrl('');
       setAdditionalNote('');
       setIsPublic(true);
+      setBottomSheetOpen(false);
+      setCurrentPattern(null);
+      if (player) {
+        player.destroy();
+        setPlayer(null);
+      }
+      if (playerRef.current) {
+        playerRef.current.destroy();
+        playerRef.current = null;
+      }
 
       if (onUploadComplete) {
         onUploadComplete(recipe);
@@ -182,111 +265,78 @@ export default function UploadView({ onUploadComplete }) {
         </div>
 
         {/* 영상 표시 */}
-        {isVideoLoaded && videoEmbedUrl && (
+        {isVideoLoaded && videoId && (
           <div className="space-y-4">
-            <div ref={videoRef} className="w-full aspect-video bg-black rounded-lg overflow-hidden">
-              <iframe
-                src={videoEmbedUrl}
-                title="YouTube video player"
-                frameBorder="0"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-                className="w-full h-full"
-              />
-            </div>
+            <div 
+              ref={videoRef} 
+              id="youtube-player"
+              className="w-full aspect-video bg-black rounded-lg overflow-hidden"
+            />
             
             {/* 캡처 버튼 */}
             <button
               type="button"
               onClick={handleCapture}
-              className="w-full px-6 py-3 bg-orange text-white rounded-lg hover:bg-opacity-90 font-medium"
+              disabled={!player}
+              className="w-full px-6 py-3 bg-orange text-white rounded-lg hover:bg-opacity-90 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
               📸 캡처
             </button>
           </div>
         )}
 
-        {/* 캡처된 도안 카드들 */}
-        {capturedPatterns.length > 0 && (
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-gray-800">캡처된 도안</h3>
-            {capturedPatterns.map((pattern) => (
+        {/* 저장된 도안 카드 리스트 */}
+        {savedPatterns.length > 0 && (
+          <div className="space-y-3">
+            <h3 className="text-lg font-semibold text-gray-800">등록된 도안</h3>
+            {savedPatterns.map((pattern) => (
               <div
                 key={pattern.id}
-                className={`border-2 rounded-lg p-4 ${
-                  pattern.isSaved
-                    ? 'border-green-300 bg-green-50'
-                    : 'border-gray-300 bg-white'
-                }`}
+                className="flex gap-4 border border-gray-200 rounded-lg p-4 bg-white hover:shadow-md transition-shadow"
               >
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-700">
-                      {pattern.isSaved ? '✓ 저장됨' : '저장 필요'}
-                    </span>
-                    {!pattern.isSaved && (
-                      <button
-                        type="button"
-                        onClick={() => handleDeletePattern(pattern.id)}
-                        className="text-red-500 hover:text-red-700 text-sm"
-                      >
-                        삭제
-                      </button>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Row 번호
-                    </label>
-                    <input
-                      type="text"
-                      value={pattern.rowNumber}
-                      onChange={(e) => handleUpdatePattern(pattern.id, 'rowNumber', e.target.value)}
-                      placeholder="예: 1, 2, 3..."
-                      disabled={pattern.isSaved}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yarn-lavender focus:border-transparent disabled:bg-gray-100"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      도안 *
-                    </label>
-                    <textarea
-                      value={pattern.pattern}
-                      onChange={(e) => handleUpdatePattern(pattern.id, 'pattern', e.target.value)}
-                      placeholder="도안 내용을 입력하세요"
-                      rows="3"
-                      disabled={pattern.isSaved}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yarn-lavender focus:border-transparent disabled:bg-gray-100"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      메모
-                    </label>
-                    <textarea
-                      value={pattern.note}
-                      onChange={(e) => handleUpdatePattern(pattern.id, 'note', e.target.value)}
-                      placeholder="추가 메모를 입력하세요"
-                      rows="2"
-                      disabled={pattern.isSaved}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yarn-lavender focus:border-transparent disabled:bg-gray-100"
-                    />
-                  </div>
-
-                  {!pattern.isSaved && (
+                {/* 좌측 썸네일 */}
+                <div className="flex-shrink-0">
+                  <img
+                    src={pattern.thumbnail}
+                    alt="캡처 썸네일"
+                    className="w-24 h-24 object-cover rounded-lg"
+                    onError={(e) => {
+                      e.target.src = thumbnailUrl || 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2YzZjRmNiIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5Y2EzYWYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj7slYzslrTrrLjsp4A8L3RleHQ+PC9zdmc+';
+                    }}
+                  />
+                </div>
+                
+                {/* 우측 정보 */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        {pattern.rowNumber && (
+                          <span className="text-sm font-semibold text-gray-800">
+                            R{pattern.rowNumber}
+                          </span>
+                        )}
+                        <span className="text-xs text-gray-500">
+                          {formatTime(pattern.captureTime)}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-800 mb-1 line-clamp-2">
+                        {pattern.pattern}
+                      </p>
+                      {pattern.note && (
+                        <p className="text-xs text-gray-600 line-clamp-1">
+                          {pattern.note}
+                        </p>
+                      )}
+                    </div>
                     <button
                       type="button"
-                      onClick={() => handleSavePattern(pattern.id)}
-                      disabled={!pattern.pattern.trim()}
-                      className="w-full px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={() => handleDeleteSavedPattern(pattern.id)}
+                      className="text-red-500 hover:text-red-700 text-sm flex-shrink-0"
                     >
-                      저장
+                      삭제
                     </button>
-                  )}
+                  </div>
                 </div>
               </div>
             ))}
@@ -325,12 +375,120 @@ export default function UploadView({ onUploadComplete }) {
         <button
           type="button"
           onClick={handleComplete}
-          disabled={isSubmitting || capturedPatterns.length === 0}
+          disabled={isSubmitting || savedPatterns.length === 0}
           className="w-full px-6 py-3 bg-yarn-lavender text-white rounded-lg hover:bg-opacity-90 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
         >
           {isSubmitting ? '업로드 중...' : '완료'}
         </button>
       </div>
+
+      {/* 바텀시트 */}
+      {bottomSheetOpen && currentPattern && (
+        <>
+          {/* 오버레이 */}
+          <div
+            className="fixed inset-0 bg-black/50 z-40"
+            onClick={() => {
+              setBottomSheetOpen(false);
+              setCurrentPattern(null);
+              if (player) {
+                player.playVideo();
+              }
+            }}
+          />
+          
+          {/* 바텀시트 */}
+          <div className="fixed bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl z-50 max-h-[80vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b px-4 py-3 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-800">도안 작성</h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setBottomSheetOpen(false);
+                  setCurrentPattern(null);
+                  if (player) {
+                    player.playVideo();
+                  }
+                }}
+                className="text-gray-400 hover:text-gray-600 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="p-4 space-y-4">
+              {/* 썸네일 */}
+              <div className="flex justify-center">
+                <img
+                  src={currentPattern.thumbnail}
+                  alt="캡처 썸네일"
+                  className="w-full max-w-md aspect-video object-cover rounded-lg"
+                  onError={(e) => {
+                    e.target.src = thumbnailUrl || 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2YzZjRmNiIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5Y2EzYWYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj7slYzslrTrrLjsp4A8L3RleHQ+PC9zdmc+';
+                  }}
+                />
+              </div>
+              
+              {/* 캡처 시간 */}
+              <div className="text-center text-sm text-gray-600">
+                캡처 시간: {formatTime(currentPattern.captureTime)}
+              </div>
+              
+              {/* Row 번호 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Row 번호
+                </label>
+                <input
+                  type="text"
+                  value={currentPattern.rowNumber}
+                  onChange={(e) => handleUpdateCurrentPattern('rowNumber', e.target.value)}
+                  placeholder="예: 1, 2, 3..."
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yarn-lavender focus:border-transparent"
+                />
+              </div>
+              
+              {/* 도안 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  도안 *
+                </label>
+                <textarea
+                  value={currentPattern.pattern}
+                  onChange={(e) => handleUpdateCurrentPattern('pattern', e.target.value)}
+                  placeholder="도안 내용을 입력하세요"
+                  rows="4"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yarn-lavender focus:border-transparent"
+                />
+              </div>
+              
+              {/* 메모 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  메모
+                </label>
+                <textarea
+                  value={currentPattern.note}
+                  onChange={(e) => handleUpdateCurrentPattern('note', e.target.value)}
+                  placeholder="추가 메모를 입력하세요"
+                  rows="3"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yarn-lavender focus:border-transparent"
+                />
+              </div>
+              
+              {/* 저장 버튼 */}
+              <button
+                type="button"
+                onClick={handleSavePattern}
+                disabled={!currentPattern.pattern.trim()}
+                className="w-full px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+              >
+                저장
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
