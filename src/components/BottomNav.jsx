@@ -95,22 +95,22 @@ export default function BottomNav({ activeTab, onTabChange }) {
           {tabs.map(tab => {
             const isActive = activeTab === tab.id;
             return (
-              <button
-                key={tab.id}
-                onClick={() => onTabChange(tab.id)}
-                className={`flex flex-col items-center justify-center flex-1 h-full transition-colors ${
+            <button
+              key={tab.id}
+              onClick={() => onTabChange(tab.id)}
+              className={`flex flex-col items-center justify-center flex-1 h-full transition-colors ${
                   isActive
                     ? 'text-orange'
                     : 'text-gray-400'
-                }`}
-              >
+              }`}
+            >
                 <div className="mb-1">
                   {renderIcon(tab.id, isActive)}
                 </div>
                 <span className={`text-xs ${isActive ? 'font-bold' : 'font-normal'}`}>
                   {tab.label}
                 </span>
-              </button>
+            </button>
             );
           })}
         </div>

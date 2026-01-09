@@ -222,7 +222,7 @@ export default function UploadView({ onUploadComplete }) {
   };
 
   return (
-    <div className="pb-20 max-w-4xl mx-auto px-4 py-6">
+    <div className={`pb-20 max-w-4xl mx-auto px-4 py-6 ${bottomSheetOpen ? 'relative' : ''}`}>
       <h2 className="text-2xl font-bold text-gray-800 mb-6">작품 업로드</h2>
 
       <div className="space-y-6">
@@ -264,23 +264,23 @@ export default function UploadView({ onUploadComplete }) {
           </div>
         </div>
 
-        {/* 영상 표시 */}
+        {/* 영상 표시 - 상단 고정 */}
         {isVideoLoaded && videoId && (
-          <div className="space-y-4">
+          <div className={`space-y-4 ${bottomSheetOpen ? 'sticky top-0 z-30 bg-white pb-4 shadow-md' : ''}`}>
             <div 
               ref={videoRef} 
               id="youtube-player"
               className="w-full aspect-video bg-black rounded-lg overflow-hidden"
             />
             
-            {/* 캡처 버튼 */}
+            {/* 기록 버튼 */}
             <button
               type="button"
               onClick={handleCapture}
               disabled={!player}
               className="w-full px-6 py-3 bg-orange text-white rounded-lg hover:bg-opacity-90 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              📸 캡처
+              기록
             </button>
           </div>
         )}
@@ -382,23 +382,17 @@ export default function UploadView({ onUploadComplete }) {
         </button>
       </div>
 
-      {/* 바텀시트 */}
+      {/* 바텀시트 - 유튜브 스타일 */}
       {bottomSheetOpen && currentPattern && (
-        <>
-          {/* 오버레이 */}
-          <div
-            className="fixed inset-0 bg-black/50 z-40"
-            onClick={() => {
-              setBottomSheetOpen(false);
-              setCurrentPattern(null);
-              if (player) {
-                player.playVideo();
-              }
+        <div className="fixed inset-0 z-40 flex flex-col pointer-events-none">
+          {/* 바텀시트 - 영상 아래에서 시작 */}
+          <div 
+            className="flex-1 bg-white rounded-t-2xl shadow-2xl overflow-y-auto pointer-events-auto"
+            style={{ 
+              marginTop: 'auto',
+              maxHeight: 'calc(100vh - 60vh)' // 영상 높이를 고려한 최대 높이
             }}
-          />
-          
-          {/* 바텀시트 */}
-          <div className="fixed bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl z-50 max-h-[80vh] overflow-y-auto">
+          >
             <div className="sticky top-0 bg-white border-b px-4 py-3 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-800">도안 작성</h3>
               <button
@@ -417,18 +411,6 @@ export default function UploadView({ onUploadComplete }) {
             </div>
             
             <div className="p-4 space-y-4">
-              {/* 썸네일 */}
-              <div className="flex justify-center">
-                <img
-                  src={currentPattern.thumbnail}
-                  alt="캡처 썸네일"
-                  className="w-full max-w-md aspect-video object-cover rounded-lg"
-                  onError={(e) => {
-                    e.target.src = thumbnailUrl || 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2YzZjRmNiIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5Y2EzYWYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj7slYzslrTrrLjsp4A8L3RleHQ+PC9zdmc+';
-                  }}
-                />
-              </div>
-              
               {/* 캡처 시간 */}
               <div className="text-center text-sm text-gray-600">
                 캡처 시간: {formatTime(currentPattern.captureTime)}
@@ -486,8 +468,27 @@ export default function UploadView({ onUploadComplete }) {
                 저장
               </button>
             </div>
+            
+            {/* 하단 고정 버튼 영역 */}
+            <div className="sticky bottom-0 bg-white border-t px-4 py-3">
+              <button
+                type="button"
+                onClick={() => {
+                  // 도안 필드에 줄바꿈 추가하여 내용 추가
+                  if (currentPattern) {
+                    const newPattern = currentPattern.pattern 
+                      ? `${currentPattern.pattern}\n` 
+                      : '';
+                    handleUpdateCurrentPattern('pattern', newPattern);
+                  }
+                }}
+                className="w-full px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium"
+              >
+                + 내용 추가
+              </button>
+            </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   );
