@@ -78,14 +78,6 @@ function App() {
 
   return (
     <div className="min-h-screen bg-white">
-      {/* 헤더 */}
-      {activeTab === 'home' && (
-        <header className="bg-white border-b sticky top-0 z-20">
-          <div className="max-w-screen-lg mx-auto px-4 py-4">
-            <h1 className="text-xl font-bold text-gray-800">🧶 나만의 뜨개 아카이브</h1>
-          </div>
-        </header>
-      )}
 
       {/* 메인 콘텐츠 */}
       <main className="pb-20">
@@ -118,14 +110,42 @@ function App() {
 
 // 홈 뷰
 function HomeView({ recipes, onView, onWish }) {
+  const [selectedCategory, setSelectedCategory] = useState('Trending');
+  
+  const categories = ['Trending', 'Toy', 'Seasonal', 'Baby & Kids', 'Cloth'];
+
   return (
     <div className="pb-20">
-      <div className="max-w-screen-lg mx-auto px-4 py-6">
-        <div className="mb-6">
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">작품 탐색</h2>
-          <p className="text-gray-600 text-sm">업로드된 모든 작품 및 도안을 탐색하세요</p>
+      {/* 헤더 */}
+      <header className="bg-white border-b sticky top-0 z-20">
+        <div className="max-w-screen-lg mx-auto px-4 py-4">
+          <h1 className="text-2xl font-bold text-gray-800 mb-4">Crochetie</h1>
+          
+          {/* 카테고리 네비게이션 */}
+          <div className="flex gap-6 overflow-x-auto scrollbar-hide">
+            {categories.map(category => (
+              <button
+                key={category}
+                onClick={() => setSelectedCategory(category)}
+                className={`relative pb-2 whitespace-nowrap font-medium transition-colors ${
+                  selectedCategory === category
+                    ? 'text-orange'
+                    : 'text-gray-600'
+                }`}
+              >
+                {category}
+                {selectedCategory === category && (
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-orange"></span>
+                )}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      </header>
+
+      {/* Pinterest 스타일 그리드 */}
+      <div className="max-w-screen-lg mx-auto px-4 py-4">
+        <div className="columns-2 gap-3">
           {recipes.map(recipe => (
             <RecipeCard
               key={recipe.id}

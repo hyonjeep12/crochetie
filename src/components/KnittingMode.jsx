@@ -82,11 +82,30 @@ export default function KnittingMode({ recipe, project, onClose }) {
 
   const toggleRowComplete = (index) => {
     const newCompleted = new Set(completedRows);
-    if (newCompleted.has(index)) {
-      newCompleted.delete(index);
+    
+    // 현재 클릭한 단이 이미 완료된 상태인지 확인
+    const isCurrentlyCompleted = newCompleted.has(index);
+    
+    // 가장 마지막 완료된 단의 인덱스 찾기
+    const completedIndices = Array.from(newCompleted).sort((a, b) => a - b);
+    const lastCompletedIndex = completedIndices.length > 0 
+      ? Math.max(...completedIndices) 
+      : -1;
+    
+    if (isCurrentlyCompleted) {
+      // 완료된 단을 클릭한 경우: 해당 단부터 마지막 단까지 모두 미완료 처리
+      for (let i = index; i < rows.length; i++) {
+        newCompleted.delete(i);
+      }
     } else {
-      newCompleted.add(index);
+      // 미완료 단을 클릭한 경우: 1단부터 해당 단까지 모두 완료 처리
+      // 단, 이미 완료된 단보다 이전 단은 건너뛰고 그 이후부터 완료 처리
+      const startIndex = lastCompletedIndex + 1;
+      for (let i = startIndex; i <= index; i++) {
+        newCompleted.add(i);
+      }
     }
+    
     setCompletedRows(newCompleted);
     
     // 프로젝트 저장
@@ -180,31 +199,44 @@ export default function KnittingMode({ recipe, project, onClose }) {
                   }`}
                 >
                   {/* 행 헤더 */}
-                  <button
-                    onClick={() => toggleRow(index)}
-                    className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
-                  >
+                  <div className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors">
                     <div className="flex items-center gap-3 flex-1">
-                      <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
-                        isCompleted
-                          ? 'bg-green-500 border-green-500'
-                          : 'border-gray-300'
-                      }`}>
+                      {/* 체크 아이콘 - 클릭 시 완료 처리 */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleRowComplete(index);
+                        }}
+                        className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
+                          isCompleted
+                            ? 'bg-green-500 border-green-500 hover:bg-green-600'
+                            : 'border-gray-300 hover:border-gray-400'
+                        }`}
+                      >
                         {isCompleted && <span className="text-white text-xs">✓</span>}
-                      </div>
-                      <span className="text-sm font-medium text-gray-600">
-                        {index + 1}단
-                      </span>
-                      <span className={`text-sm flex-1 text-left ${
-                        isCompleted ? 'text-green-700' : 'text-gray-800'
-                      }`}>
-                        {row.substring(0, 50)}{row.length > 50 ? '...' : ''}
-                      </span>
+                      </button>
+                      {/* 나머지 영역 - 클릭 시 accordion 토글 */}
+                      <button
+                        onClick={() => toggleRow(index)}
+                        className="flex items-center gap-3 flex-1 text-left"
+                      >
+                        <span className="text-sm font-medium text-gray-600">
+                          {index + 1}단
+                        </span>
+                        <span className={`text-sm flex-1 ${
+                          isCompleted ? 'text-green-700' : 'text-gray-800'
+                        }`}>
+                          {row.substring(0, 50)}{row.length > 50 ? '...' : ''}
+                        </span>
+                      </button>
                     </div>
-                    <span className="text-gray-400">
+                    <button
+                      onClick={() => toggleRow(index)}
+                      className="text-gray-400 hover:text-gray-600"
+                    >
                       {isExpanded ? '▲' : '▼'}
-                    </span>
-                  </button>
+                    </button>
+                  </div>
 
                   {/* 확장된 내용 */}
                   {isExpanded && (
