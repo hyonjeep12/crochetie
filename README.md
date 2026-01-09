@@ -1,6 +1,18 @@
-# React + Vite
+# Crochetie 🧶
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+뜨개 작품을 관리하고 도안을 보며 뜨개질할 수 있는 모바일 앱
+
+## 주요 기능
+
+- 도안 업로드 및 탐색
+- 뜨개 모드 (목록형식 / 갤러리 형식)
+- 마이 스튜디오 (진행중인 작품 및 저장한 작품 관리)
+
+## 기술 스택
+
+- React + Vite
+- Tailwind CSS
+- LocalStorage 기반 데이터 저장
 
 Currently, two official plugins are available:
 
