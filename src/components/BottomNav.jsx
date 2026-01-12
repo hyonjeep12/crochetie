@@ -1,8 +1,8 @@
 export default function BottomNav({ activeTab, onTabChange }) {
   const tabs = [
-    { id: 'home', label: 'Home', left: 50 },
-    { id: 'upload', label: 'Upload', left: 170 },
-    { id: 'mystudio', label: 'My Studio', left: 290 },
+    { id: 'home', label: 'Home' },
+    { id: 'upload', label: 'Upload' },
+    { id: 'mystudio', label: 'My Studio' },
   ];
 
   const HomeIcon = ({ isActive }) => (
@@ -87,19 +87,15 @@ export default function BottomNav({ activeTab, onTabChange }) {
         borderTop: '1px solid #E0E0E0'
       }}
     >
-      <div className="relative w-full h-full">
+      <div className="flex justify-around items-center h-full px-4">
         {tabs.map(tab => {
           const isActive = activeTab === tab.id;
           return (
             <button
               key={tab.id}
               onClick={() => onTabChange(tab.id)}
-              className="flex flex-col items-center justify-start"
+              className="flex flex-col items-center justify-center flex-1"
               style={{
-                position: 'absolute',
-                left: `${tab.left}px`,
-                top: '13px',
-                width: '72px',
                 gap: '2px',
                 opacity: isActive ? 1 : 0.5
               }}

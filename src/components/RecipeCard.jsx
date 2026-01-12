@@ -5,8 +5,11 @@ export default function RecipeCard({ recipe, onView }) {
   return (
     <div
       onClick={() => onView?.(recipe)}
-      className="relative cursor-pointer"
-      style={{ width: '136px', height: '138px', position: 'relative' }}
+      className="relative cursor-pointer w-full"
+      style={{ 
+        aspectRatio: '136 / 138',
+        position: 'relative'
+      }}
     >
       {/* 썸네일 */}
       <div className="relative w-full h-full overflow-hidden">
@@ -15,13 +18,6 @@ export default function RecipeCard({ recipe, onView }) {
             src={recipe.thumbnail_url}
             alt={recipe.title}
             className="w-full h-full object-cover"
-            style={{ 
-              width: '136px', 
-              height: '138px',
-              position: 'absolute',
-              left: 0,
-              top: 0
-            }}
             onError={(e) => {
               e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2YzZjRmNiIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5Y2EzYWYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj7slYzslrTrrLjsp4A8L3RleHQ+PC9zdmc+';
             }}
@@ -29,13 +25,6 @@ export default function RecipeCard({ recipe, onView }) {
         ) : (
           <div 
             className="w-full h-full flex items-center justify-center text-gray-400 bg-gray-200"
-            style={{ 
-              width: '136px', 
-              height: '138px',
-              position: 'absolute',
-              left: 0,
-              top: 0
-            }}
           >
             🧶
           </div>

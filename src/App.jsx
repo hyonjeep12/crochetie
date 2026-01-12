@@ -174,12 +174,10 @@ function HomeView({ recipes, onView, onWish }) {
       {/* 그리드 레이아웃 - 3열 고정 */}
       <div className="px-0 pt-4">
         <div 
-          className="flex flex-wrap justify-start items-start"
+          className="grid grid-cols-3"
           style={{ 
             gap: '2px',
-            width: '100%',
-            maxWidth: '412px', // 136px × 3 + 2px × 2 = 412px
-            margin: '0 auto'
+            width: '100%'
           }}
         >
           {filteredRecipes.map(recipe => (
