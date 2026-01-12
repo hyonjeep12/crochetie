@@ -5,11 +5,10 @@ export default function KnittingMode({ recipe, project, onClose }) {
   const [mode, setMode] = useState('list'); // 'list' or 'gallery'
   const [expandedRows, setExpandedRows] = useState(new Set());
   const [currentRowIndex, setCurrentRowIndex] = useState(0);
+  const [selectedRowIndex, setSelectedRowIndex] = useState(null); // 선택된 단
   const [completedRows, setCompletedRows] = useState(new Set(project?.completed_rows || []));
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [touchStart, setTouchStart] = useState(null);
-  const [touchEnd, setTouchEnd] = useState(null);
   const [expandedSections, setExpandedSections] = useState(new Set([0]));
+  const [showSectionInfo, setShowSectionInfo] = useState(new Set());
 
   // 도안 설명을 줄 단위로 분리 및 섹션 추출
   const parsePattern = () => {
@@ -159,29 +158,76 @@ export default function KnittingMode({ recipe, project, onClose }) {
 
   const progress = rows.length > 0 ? (completedRows.size / rows.length) * 100 : 0;
 
-  // 스와이프 핸들러
-  const minSwipeDistance = 50;
-
-  const onTouchStart = (e) => {
-    setTouchEnd(null);
-    setTouchStart(e.targetTouches[0].clientX);
+  // 현재 진행 중인 단 찾기 (완료되지 않은 첫 번째 단)
+  const getCurrentRowIndex = () => {
+    const completedIndices = Array.from(completedRows).sort((a, b) => a - b);
+    if (completedIndices.length === 0) return 0;
+    const lastCompleted = Math.max(...completedIndices);
+    return lastCompleted + 1 < rows.length ? lastCompleted + 1 : lastCompleted;
   };
 
-  const onTouchMove = (e) => {
-    setTouchEnd(e.targetTouches[0].clientX);
+  const currentActiveRowIndex = getCurrentRowIndex();
+
+  // 현재 단의 섹션과 단 번호 찾기
+  const getCurrentRowInfo = () => {
+    const currentRow = parsedRows[currentActiveRowIndex];
+    if (!currentRow) return { section: '전체', rowNumber: 1 };
+    
+    const section = sections.find(s => s.rows.some(r => r.index === currentActiveRowIndex));
+    return {
+      section: section?.name || '전체',
+      rowNumber: currentRow.number || currentActiveRowIndex + 1
+    };
   };
 
-  const onTouchEnd = () => {
-    if (!touchStart || !touchEnd) return;
-    const distance = touchStart - touchEnd;
-    const isLeftSwipe = distance > minSwipeDistance;
-    const isRightSwipe = distance < -minSwipeDistance;
+  const currentRowInfo = getCurrentRowInfo();
 
-    if (isLeftSwipe && currentRowIndex < rows.length - 1) {
-      setCurrentRowIndex(currentRowIndex + 1);
+  // 선택된 단의 정보 가져오기
+  const getSelectedRowInfo = () => {
+    const targetIndex = selectedRowIndex !== null ? selectedRowIndex : currentActiveRowIndex;
+    const targetRow = parsedRows[targetIndex];
+    if (!targetRow) return { section: '전체', rowNumber: 1 };
+    
+    const section = sections.find(s => s.rows.some(r => r.index === targetIndex));
+    return {
+      section: section?.name || '전체',
+      rowNumber: targetRow.number || targetIndex + 1
+    };
+  };
+
+  const selectedRowInfo = getSelectedRowInfo();
+  const displayRowIndex = selectedRowIndex !== null ? selectedRowIndex : currentActiveRowIndex;
+  const isSelectedRowCompleted = completedRows.has(displayRowIndex);
+
+  const toggleSection = (sectionIndex) => {
+    const newExpanded = new Set(expandedSections);
+    if (newExpanded.has(sectionIndex)) {
+      newExpanded.delete(sectionIndex);
+    } else {
+      newExpanded.add(sectionIndex);
     }
-    if (isRightSwipe && currentRowIndex > 0) {
-      setCurrentRowIndex(currentRowIndex - 1);
+    setExpandedSections(newExpanded);
+  };
+
+  const toggleSectionInfo = (sectionIndex) => {
+    const newShow = new Set(showSectionInfo);
+    if (newShow.has(sectionIndex)) {
+      newShow.delete(sectionIndex);
+    } else {
+      newShow.add(sectionIndex);
+    }
+    setShowSectionInfo(newShow);
+  };
+
+  const handleSelectRow = (index) => {
+    setSelectedRowIndex(index);
+  };
+
+  const handleCompleteRow = () => {
+    toggleRowComplete(displayRowIndex);
+    // 완료 후 선택 해제 (선택 사항)
+    if (selectedRowIndex !== null) {
+      setSelectedRowIndex(null);
     }
   };
 
@@ -189,144 +235,269 @@ export default function KnittingMode({ recipe, project, onClose }) {
   if (mode === 'list') {
     return (
       <div className="fixed inset-0 bg-white z-50 flex flex-col">
-        {/* 헤더 */}
-        <div className="sticky top-0 bg-white border-b px-4 py-3 flex items-center justify-between z-10">
-          <button
-            onClick={onClose}
-            className="text-gray-600 hover:text-gray-800 text-xl"
-          >
-            ←
-          </button>
-          <h2 className="text-lg font-bold text-gray-800 flex-1 text-center">
-            {recipe?.title}
-          </h2>
-          <button
-            onClick={() => setMode('gallery')}
-            className="text-gray-600 hover:text-gray-800 text-sm"
-          >
-            갤러리
-          </button>
-        </div>
-
-        {/* 진행 상황 바 */}
-        <div className="bg-gray-100 px-4 py-2">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-sm text-gray-600">진행도</span>
-            <span className="text-sm font-semibold text-gray-800">
-              {completedRows.size} / {rows.length}
-            </span>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-2">
+        {/* 1. 상단 바 */}
+        <div className="sticky top-0 bg-white z-10">
+          {/* 진행 바 (얇은) */}
+          <div className="w-full h-1 bg-gray-200">
             <div
-              className="bg-yarn-lavender h-2 rounded-full transition-all"
+              className="h-full bg-primary transition-all"
               style={{ width: `${progress}%` }}
             />
           </div>
+          
+          {/* 앱바 */}
+          <div className="border-b px-4 py-3 flex items-center justify-between relative">
+            {/* 뒤로가기 */}
+            <button
+              onClick={onClose}
+              className="text-gray-600 hover:text-gray-800"
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M15 18L9 12L15 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+            
+            {/* 작품명 - 가운데 정렬 */}
+            <h2 className="absolute left-1/2 transform -translate-x-1/2 text-lg font-bold text-gray-800 text-center">
+              {recipe?.title}
+            </h2>
+            
+            {/* 갤러리 모드 버튼 */}
+            <button
+              onClick={() => setMode('gallery')}
+              className="text-gray-600 hover:text-gray-800 text-sm ml-auto"
+            >
+              갤러리 모드
+            </button>
+          </div>
         </div>
 
-        {/* 목록 */}
-        <div className="flex-1 overflow-y-auto pb-20">
-          <div className="max-w-2xl mx-auto px-4 py-4 space-y-2">
-            {rows.map((row, index) => {
-              const isExpanded = expandedRows.has(index);
-              const isCompleted = completedRows.has(index);
+        {/* 2. 도안 섹션 */}
+        <div className="flex-1 overflow-y-auto pb-24">
+          <div className="px-4 py-4 space-y-4">
+            {sections.map((section, sectionIndex) => {
+              const isExpanded = expandedSections.has(sectionIndex);
+              const isInfoShown = showSectionInfo.has(sectionIndex);
 
               return (
-                <div
-                  key={index}
-                  className={`border rounded-lg overflow-hidden ${
-                    isCompleted ? 'bg-green-50 border-green-200' : 'bg-white'
-                  }`}
-                >
-                  {/* 행 헤더 */}
-                  <div className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors">
-                    <div className="flex items-center gap-3 flex-1">
-                      {/* 체크 아이콘 - 클릭 시 완료 처리 */}
+                <div key={sectionIndex} className="border rounded-lg overflow-hidden bg-white">
+                  {/* 섹션 헤더 */}
+                  <div className="px-4 py-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2 flex-1">
+                      <button
+                        onClick={() => toggleSection(sectionIndex)}
+                        className="flex items-center gap-2 flex-1 text-left"
+                      >
+                        <span className="font-semibold text-gray-800">{section.name}</span>
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          xmlns="http://www.w3.org/2000/svg"
+                          className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                        >
+                          <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </button>
+                      
+                      {/* 정보 아이콘 */}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          toggleRowComplete(index);
+                          toggleSectionInfo(sectionIndex);
                         }}
-                        className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
-                          isCompleted
-                            ? 'bg-green-500 border-green-500 hover:bg-green-600'
-                            : 'border-gray-300 hover:border-gray-400'
-                        }`}
+                        className="text-gray-400 hover:text-gray-600"
                       >
-                        {isCompleted && <span className="text-white text-xs">✓</span>}
-                      </button>
-                      {/* 나머지 영역 - 클릭 시 accordion 토글 */}
-                      <button
-                        onClick={() => toggleRow(index)}
-                        className="flex items-center gap-3 flex-1 text-left"
-                      >
-                        <span className="text-sm font-medium text-gray-600">
-                          {index + 1}단
-                        </span>
-                        <span className={`text-sm flex-1 ${
-                          isCompleted ? 'text-green-700' : 'text-gray-800'
-                        }`}>
-                          {row.substring(0, 50)}{row.length > 50 ? '...' : ''}
-                        </span>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+                          <path d="M12 16v-4M12 8h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                        </svg>
                       </button>
                     </div>
-                    <button
-                      onClick={() => toggleRow(index)}
-                      className="text-gray-400 hover:text-gray-600"
-                    >
-                      {isExpanded ? '▲' : '▼'}
-                    </button>
                   </div>
 
-                  {/* 확장된 내용 */}
+                  {/* 섹션 정보 (정보 아이콘 클릭 시 표시) */}
+                  {isInfoShown && (
+                    <div className="px-4 pb-3 border-t bg-gray-50">
+                      <p className="text-sm text-gray-600 mt-2 leading-relaxed">
+                        이 그룹을 진행할 때 참고할 수 있는 정보입니다. 예를 들어 특별한 기법이나 주의사항이 있을 수 있습니다.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* 3. 단 리스트 */}
                   {isExpanded && (
-                    <div className="px-4 pb-4 space-y-3 border-t bg-gray-50">
-                      <div className="pt-3">
-                        <p className="text-gray-800 whitespace-pre-wrap">{row}</p>
-                      </div>
+                    <div className="border-t">
+                      {section.rows.map((rowData) => {
+                        const index = rowData.index;
+                        const isExpanded = expandedRows.has(index);
+                        const isCompleted = completedRows.has(index);
+                        const isCurrent = index === currentActiveRowIndex; // 현재 진행 중인 단
+                        const isSelected = selectedRowIndex === index; // 선택된 단
+                        const rowNumber = rowData.number || index + 1;
 
-                      {/* 비디오 썸네일 (있는 경우) */}
-                      {recipe?.source_url && index === 0 && (
-                        <div className="bg-black rounded-lg aspect-video">
-                          <iframe
-                            src={recipe.source_url.includes('youtube.com') || recipe.source_url.includes('youtu.be')
-                              ? `https://www.youtube.com/embed/${recipe.source_url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/)?.[1]}`
-                              : recipe.source_url}
-                            title={recipe.title}
-                            frameBorder="0"
-                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                            allowFullScreen
-                            className="w-full h-full rounded-lg"
-                          />
-                        </div>
-                      )}
+                        return (
+                          <div
+                            key={index}
+                            className={`border-b last:border-0 ${
+                              isCurrent
+                                ? 'bg-primary/10 border-l-4 border-l-primary'
+                                : isCompleted
+                                ? 'border-l border-l-primary/30'
+                                : 'bg-white'
+                            }`}
+                          >
+                            {/* 단 헤더 */}
+                            <div className="w-full px-4 py-3 flex items-center justify-between">
+                              {/* 단 카드 전체 영역 - 선택만 */}
+                              <button
+                                onClick={() => handleSelectRow(index)}
+                                className="flex items-center gap-3 flex-1 text-left"
+                              >
+                                {/* 상태 표시 아이콘 영역 */}
+                                <div className="w-6 h-6 flex items-center justify-center flex-shrink-0">
+                                  {/* 현재 진행 중인 단 - 가장 강하게 강조 */}
+                                  {isCurrent && (
+                                    <div className="w-4 h-4 rounded-full bg-primary flex items-center justify-center">
+                                      <div className="w-2 h-2 rounded-full bg-white" />
+                                    </div>
+                                  )}
+                                  
+                                  {/* 선택된 단 - 보라색 원 안에 화살표 (현재 진행 단이 아닐 때) */}
+                                  {isSelected && !isCurrent && (
+                                    <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M9 18l6-6-6-6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                      </svg>
+                                    </div>
+                                  )}
+                                  
+                                  {/* 완료된 단 - 체크 아이콘 (선택사항) */}
+                                  {isCompleted && !isCurrent && !isSelected && (
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                      <path d="M20 6L9 17l-5-5" stroke="#6060E6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" strokeOpacity="0.5"/>
+                                    </svg>
+                                  )}
+                                </div>
+                                
+                                {/* 단 제목: "단수 · 도안 요약" 형식 */}
+                                <span className={`flex-1 truncate ${
+                                  isCurrent
+                                    ? 'text-primary font-bold text-base'
+                                    : isSelected
+                                    ? 'text-primary font-semibold text-sm'
+                                    : isCompleted
+                                    ? 'text-gray-400 text-sm'
+                                    : 'text-gray-800 text-sm'
+                                }`}>
+                                  <span className="font-medium">{rowNumber}단</span>
+                                  <span className="mx-1.5 text-gray-400">·</span>
+                                  <span className={isCompleted ? 'text-gray-400' : ''}>
+                                    {rowData.text.length > 40 ? rowData.text.substring(0, 40) + '...' : rowData.text}
+                                  </span>
+                                </span>
+                              </button>
+                              
+                              {/* 쉐브론 아이콘 - 펼침/닫힘 전용 */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleRow(index);
+                                }}
+                                className="ml-2 p-1 text-gray-400 hover:text-gray-600"
+                              >
+                                <svg
+                                  width="16"
+                                  height="16"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                                >
+                                  <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              </button>
+                            </div>
 
-                      {/* 메모 (있는 경우) */}
-                      {recipe?.additional_note && index === 0 && (
-                        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                          <p className="text-sm text-yellow-800 font-medium mb-1">💡 메모</p>
-                          <p className="text-sm text-yellow-700 whitespace-pre-wrap">
-                            {recipe.additional_note}
-                          </p>
-                        </div>
-                      )}
+                            {/* 4. 상세 설명 (펼쳐진 상태) - 제목 없이 보조 정보만 */}
+                            {isExpanded && (
+                              <div className="px-4 pb-4 space-y-3 bg-gray-50">
+                                {/* 가이드 텍스트 */}
+                                <div className="pt-2 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                                  <p className="text-xs text-blue-800 leading-relaxed">
+                                    💡 가이드: 이 단을 진행할 때 주의할 점이나 팁이 여기에 표시됩니다.
+                                  </p>
+                                </div>
 
-                      {/* 완료 버튼 */}
-                      <button
-                        onClick={() => toggleRowComplete(index)}
-                        className={`w-full py-2 rounded-lg font-medium transition-colors ${
-                          isCompleted
-                            ? 'bg-green-500 text-white hover:bg-green-600'
-                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                        }`}
-                      >
-                        {isCompleted ? '✓ 완료됨' : '완료 체크'}
-                      </button>
+                                {/* 영상/이미지 버튼 */}
+                                <div className="flex items-center gap-3">
+                                  {recipe?.source_url && (
+                                    <button className="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
+                                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" fill="currentColor"/>
+                                        <path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2"/>
+                                      </svg>
+                                      <span className="text-xs text-gray-700">영상 보기</span>
+                                    </button>
+                                  )}
+                                  {recipe?.pattern_images && recipe.pattern_images[index] && (
+                                    <button className="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
+                                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2"/>
+                                        <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/>
+                                        <path d="M21 15l-5-5L5 21" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                                      </svg>
+                                      <span className="text-xs text-gray-700">이미지 보기</span>
+                                    </button>
+                                  )}
+                                </div>
+
+                                {/* 추가 설명 (필요한 경우) */}
+                                {rowData.text.length > 50 && (
+                                  <div className="pt-1">
+                                    <p className="text-gray-600 text-xs leading-relaxed">
+                                      {rowData.text}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
               );
             })}
+          </div>
+        </div>
+
+        {/* 5. 하단 고정 영역 */}
+        <div className="sticky bottom-0 bg-white border-t px-4 py-4 z-10">
+          <div className="flex items-center justify-between gap-4">
+            {/* 선택된 단 정보 (또는 현재 진행 단) */}
+            <div className="flex-1">
+              <p className="text-sm text-gray-600">
+                {selectedRowIndex !== null ? '선택한 단' : '지금 뜨는 단'}
+              </p>
+              <p className="text-base font-semibold text-gray-800">
+                {selectedRowInfo.section} {selectedRowInfo.rowNumber}단
+              </p>
+            </div>
+            
+            {/* CTA 버튼 */}
+            <button
+              onClick={handleCompleteRow}
+              className={`px-6 py-3 rounded-lg font-semibold text-base transition-colors ${
+                isSelectedRowCompleted
+                  ? 'bg-gray-300 text-gray-600'
+                  : 'bg-primary text-white hover:bg-opacity-90'
+              }`}
+            >
+              {isSelectedRowCompleted ? '이 단부터 다시 뜨기' : '이 단 완료'}
+            </button>
           </div>
         </div>
       </div>
