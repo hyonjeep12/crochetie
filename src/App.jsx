@@ -112,46 +112,81 @@ function App() {
 function HomeView({ recipes, onView, onWish }) {
   const [selectedCategory, setSelectedCategory] = useState('Trending');
   
-  const categories = ['Trending', 'Toy', 'Seasonal', 'Baby & Kids', 'Cloth'];
+  const categories = ['Trending', 'Toy', 'Seasonal', 'Baby & Kids'];
+
+  // 카테고리별 레시피 필터링 (현재는 모든 레시피 표시)
+  const filteredRecipes = recipes;
 
   return (
-    <div className="pb-20">
+    <div className="pb-[72px] min-h-screen bg-white">
       {/* 헤더 */}
-      <header className="bg-white border-b sticky top-0 z-20">
-        <div className="max-w-screen-lg mx-auto px-4 py-4">
-          <h1 className="text-2xl font-bold text-gray-800 mb-4">Crochetie</h1>
+      <header className="bg-white sticky top-0 z-20">
+        <div className="px-4 py-4">
+          <h1 
+            className="text-black font-bold mb-0"
+            style={{ 
+              fontSize: '28px', 
+              lineHeight: '33.6px',
+              fontFamily: 'Pretendard Variable, Pretendard, sans-serif',
+              color: '#000000'
+            }}
+          >
+            Crochetie
+          </h1>
           
           {/* 카테고리 네비게이션 */}
-          <div className="flex gap-6 overflow-x-auto scrollbar-hide">
-            {categories.map(category => (
-              <button
-                key={category}
-                onClick={() => setSelectedCategory(category)}
-                className={`relative pb-2 whitespace-nowrap font-medium transition-colors ${
-                  selectedCategory === category
-                    ? 'text-orange'
-                    : 'text-gray-600'
-                }`}
-              >
-                {category}
-                {selectedCategory === category && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-orange"></span>
-                )}
-              </button>
-            ))}
+          <div className="flex justify-start" style={{ marginTop: '16px', gap: '24px' }}>
+            {categories.map((category) => {
+              const isActive = selectedCategory === category;
+              return (
+                <button
+                  key={category}
+                  onClick={() => setSelectedCategory(category)}
+                  className="relative whitespace-nowrap transition-colors"
+                  style={{ 
+                    fontSize: '16px', 
+                    lineHeight: '19.2px',
+                    fontFamily: 'Pretendard Variable, Pretendard, sans-serif',
+                    color: isActive ? '#6060E6' : '#8A8A8A',
+                    fontWeight: isActive ? '600' : '400'
+                  }}
+                >
+                  {category}
+                  {isActive && (
+                    <span 
+                      className="absolute"
+                      style={{ 
+                        bottom: '-8px',
+                        left: '0',
+                        width: '100%',
+                        height: '2px',
+                        backgroundColor: '#6060E6'
+                      }}
+                    ></span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
       </header>
 
-      {/* Pinterest 스타일 그리드 */}
-      <div className="max-w-screen-lg mx-auto px-4 py-4">
-        <div className="columns-2 gap-3">
-          {recipes.map(recipe => (
+      {/* 그리드 레이아웃 - 3열 고정 */}
+      <div className="px-0 pt-4">
+        <div 
+          className="flex flex-wrap justify-start items-start"
+          style={{ 
+            gap: '2px',
+            width: '100%',
+            maxWidth: '412px', // 136px × 3 + 2px × 2 = 412px
+            margin: '0 auto'
+          }}
+        >
+          {filteredRecipes.map(recipe => (
             <RecipeCard
               key={recipe.id}
               recipe={recipe}
               onView={onView}
-              onWish={onWish}
             />
           ))}
         </div>

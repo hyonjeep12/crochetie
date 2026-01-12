@@ -10,6 +10,7 @@
 /* 모바일 스크롤 개선 */
 body {
   -webkit-overflow-scrolling: touch;
+  font-family: 'Pretendard Variable', 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
 }
 
 /* 스크롤바 숨기기 */
