@@ -344,7 +344,7 @@ export default function KnittingMode({ recipe, project, onClose }) {
                               isCurrent
                                 ? 'bg-primary/10 border-l-4 border-l-primary'
                                 : isCompleted
-                                ? 'border-l border-l-primary/30'
+                                ? 'border-l-[3px] border-l-primary'
                                 : 'bg-white'
                             }`}
                           >
@@ -373,12 +373,7 @@ export default function KnittingMode({ recipe, project, onClose }) {
                                     </div>
                                   )}
                                   
-                                  {/* 완료된 단 - 체크 아이콘 (선택사항) */}
-                                  {isCompleted && !isCurrent && !isSelected && (
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                      <path d="M20 6L9 17l-5-5" stroke="#6060E6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" strokeOpacity="0.5"/>
-                                    </svg>
-                                  )}
+                                  {/* 완료된 단은 아이콘 없음 - 왼쪽 보라색 3px 라인만 표시 */}
                                 </div>
                                 
                                 {/* 단 제목: "단수 · 도안 요약" 형식 */}
