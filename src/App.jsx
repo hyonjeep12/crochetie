@@ -632,7 +632,7 @@ function UploadStep2({ uploadData, onBack, onNext }) {
     setParsedSections(newSections);
   };
 
-  // 카드 확장/축소 (이미지 업로드용)
+  // 카드 확장/축소
   const handleToggleRow = (sectionIndex, rowIndex) => {
     if (expandedRow && expandedRow.sectionIndex === sectionIndex && expandedRow.rowIndex === rowIndex) {
       setExpandedRow(null);
@@ -641,13 +641,33 @@ function UploadStep2({ uploadData, onBack, onNext }) {
     }
   };
 
-  // 단 정보 수정 핸들러 (이미지 업로드용)
+  // 단 정보 수정 핸들러
   const handleUpdateRow = (sectionIndex, rowIndex, field, value) => {
     const newSections = [...parsedSections];
     if (field === 'number') {
       newSections[sectionIndex].rows[rowIndex].number = parseInt(value) || 1;
     } else if (field === 'content') {
       newSections[sectionIndex].rows[rowIndex].content = value;
+    } else if (field === 'startTime') {
+      // 시간 입력 (초 단위)
+      const timeValue = value.trim();
+      if (timeValue === '') {
+        newSections[sectionIndex].rows[rowIndex].startTime = null;
+      } else {
+        // M:SS 형식 파싱
+        const timeMatch = timeValue.match(/^(\d+):(\d{2})$/);
+        if (timeMatch) {
+          const minutes = parseInt(timeMatch[1]);
+          const seconds = parseInt(timeMatch[2]);
+          newSections[sectionIndex].rows[rowIndex].startTime = minutes * 60 + seconds;
+        } else {
+          // 숫자만 입력된 경우 초로 간주
+          const seconds = parseInt(timeValue);
+          if (!isNaN(seconds)) {
+            newSections[sectionIndex].rows[rowIndex].startTime = seconds;
+          }
+        }
+      }
     } else if (field === 'guideMemo') {
       newSections[sectionIndex].rows[rowIndex].guideMemo = value;
     }
@@ -684,120 +704,181 @@ function UploadStep2({ uploadData, onBack, onNext }) {
         </h1>
       </div>
 
-      {/* 2. 메인 영역 */}
-      <div className="flex-1 overflow-y-auto pb-24">
-        {/* 영상 영역 (영상으로 올리기일 경우만) */}
-        {uploadData.type === 'video' && videoEmbedUrl && (
-          <div className="w-full aspect-video bg-gray-100 relative">
-            <div ref={videoRef} className="w-full h-full" />
-            {/* 현재 시간 표시 */}
-            <div className="absolute bottom-2 right-2 bg-black/70 text-white px-3 py-1 rounded text-sm z-10">
-              {formatTime(currentTime)}
-            </div>
+      {/* 영상 영역 (상단 고정, 영상으로 올리기일 경우만) */}
+      {uploadData.type === 'video' && videoEmbedUrl && (
+        <div className="w-full bg-gray-100 relative" style={{ aspectRatio: '16/9' }}>
+          <div ref={videoRef} className="w-full h-full" />
+          {/* 현재 시간 표시 */}
+          <div className="absolute bottom-2 right-2 bg-black/70 text-white px-3 py-1 rounded text-sm z-10">
+            {formatTime(currentTime)}
           </div>
-        )}
+        </div>
+      )}
 
+      {/* 2. 메인 영역 */}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden">
         {/* 파싱된 단 리스트 */}
         <div className="px-4 py-6 space-y-6">
           {parsedSections.map((section, sectionIndex) => (
-            <div key={sectionIndex} className="border rounded-lg overflow-hidden">
-              {/* 섹션 헤더 */}
-              <div className="bg-gray-50 px-4 py-3 border-b">
-                <h3 className="font-semibold text-gray-800">{section.name}</h3>
+            <div key={sectionIndex} className="space-y-4">
+              {/* 섹션 헤더 (읽기 전용) */}
+              <div className="px-0 py-2">
+                <h3 className="font-semibold text-gray-800 break-words">{section.name}</h3>
                 {section.guide && (
-                  <p className="text-sm text-gray-600 mt-1">{section.guide}</p>
+                  <p className="text-sm text-gray-600 mt-1 break-words">{section.guide}</p>
                 )}
               </div>
 
               {/* 단 리스트 */}
-              <div className="divide-y">
+              <div className="space-y-2">
                 {section.rows.map((row, rowIndex) => {
-                  const isExpanded = uploadData.type === 'image' && expandedRow?.sectionIndex === sectionIndex && expandedRow?.rowIndex === rowIndex;
+                  const isExpanded = expandedRow?.sectionIndex === sectionIndex && expandedRow?.rowIndex === rowIndex;
                   
                   return (
-                    <div key={rowIndex}>
+                    <div key={rowIndex} className="border-b border-gray-200 pb-3 last:border-b-0">
                       {/* 단 카드 헤더 */}
-                      <div className="px-4 py-3 flex items-center justify-between">
+                      <div className="px-0 py-3 flex items-center gap-2 min-w-0">
+                        {/* 접기 버튼 (왼쪽) */}
                         <button
-                          onClick={() => {
-                            if (uploadData.type === 'image') {
-                              handleToggleRow(sectionIndex, rowIndex);
-                            }
-                          }}
-                          className={`flex-1 flex items-center justify-between text-left ${uploadData.type === 'image' ? 'hover:bg-gray-50 transition-colors -mx-4 px-4 py-0' : ''}`}
+                          onClick={() => handleToggleRow(sectionIndex, rowIndex)}
+                          className="flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors"
                         >
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium text-gray-800">{row.number}단:</span>
-                              <span className="text-gray-700 text-sm truncate">
-                                {row.content.length > 40 ? row.content.substring(0, 40) + '...' : row.content}
-                              </span>
+                          <svg
+                            width="20"
+                            height="20"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                            className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                          >
+                            <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </button>
+
+                        {/* 카드 내용 (클릭 가능) */}
+                        <button
+                          onClick={() => handleToggleRow(sectionIndex, rowIndex)}
+                          className="flex-1 flex items-center text-left hover:bg-gray-50 transition-colors -mx-4 px-4 py-0 min-w-0"
+                        >
+                          <div className="flex-1 min-w-0">
+                            {/* 단 이름과 도안 정보 (한 줄) */}
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="font-medium text-gray-800 flex-shrink-0">{row.number}R:</span>
+                              <span className="text-gray-700 text-sm truncate">{row.content}</span>
                             </div>
-                            {/* 영상 업로드: 시작 시간 표시 */}
-                            {uploadData.type === 'video' && row.startTime !== null && (
-                              <p className="text-xs text-primary mt-1">
-                                시작 시간: {formatTime(row.startTime)}
-                              </p>
-                            )}
-                            {/* 이미지 업로드: 가이드 텍스트 표시 (있을 때만) */}
-                            {uploadData.type === 'image' && row.guideMemo && (
-                              <p className="text-xs text-gray-500 mt-1 italic">
+                            
+                            {/* 가이드 텍스트 표시 (있을 때만, 모든 타입) */}
+                            {row.guideMemo && (
+                              <p className="text-xs text-gray-500 mt-1 italic break-words">
                                 💡 {row.guideMemo}
                               </p>
                             )}
                           </div>
-                          
-                          {/* 이미지 업로드: 확장 아이콘 */}
-                          {uploadData.type === 'image' && (
-                            <svg
-                              width="20"
-                              height="20"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              xmlns="http://www.w3.org/2000/svg"
-                              className={`text-gray-400 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`}
-                            >
-                              <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                            </svg>
-                          )}
                         </button>
                         
-                        {/* 영상 업로드: 시간 기록 버튼 */}
+                        {/* 시간 표시 + 시간 기록 버튼 (오른쪽, 영상 업로드일 때만) */}
                         {uploadData.type === 'video' && (
-                          <button
-                            onClick={() => handleRecordTime(sectionIndex, rowIndex)}
-                            className={`ml-4 px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                              row.startTime !== null
-                                ? 'bg-green-100 text-green-700'
-                                : 'bg-primary text-white hover:bg-opacity-90'
-                            }`}
-                          >
-                            {row.startTime !== null ? '✓ 기록됨' : '시간 기록'}
-                          </button>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            {/* 시간 표시 */}
+                            <div className="text-xs">
+                              {row.startTime !== null ? (
+                                <span className="text-primary">
+                                  {formatTime(row.startTime)}
+                                </span>
+                              ) : (
+                                <span className="text-gray-400">-:--</span>
+                              )}
+                            </div>
+                            
+                            {/* 시간 기록 버튼 */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRecordTime(sectionIndex, rowIndex);
+                              }}
+                              className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
+                                row.startTime !== null
+                                  ? 'bg-green-100 text-green-700'
+                                  : 'bg-primary text-white hover:bg-opacity-90'
+                              }`}
+                            >
+                              {row.startTime !== null ? '✓' : '기록'}
+                            </button>
+                          </div>
                         )}
                       </div>
 
-                      {/* 이미지 업로드: 확장된 수정 영역 */}
-                      {uploadData.type === 'image' && isExpanded && (
-                        <div className="px-4 pb-4 space-y-4 bg-gray-50 border-t">
-                          {/* 단 이름 수정 */}
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              단 이름
-                            </label>
-                            <input
-                              type="number"
-                              value={row.number}
-                              onChange={(e) => handleUpdateRow(sectionIndex, rowIndex, 'number', e.target.value)}
-                              min="1"
-                              className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:border-primary focus:outline-none text-gray-800 text-sm"
-                            />
-                          </div>
+                      {/* 확장된 수정 영역 */}
+                      {isExpanded && (
+                        <div className="px-0 pb-4 pt-4 space-y-4 bg-gray-50 rounded-lg mt-2 mx-0">
+                          {/* 단 번호와 시작 시간 (2컬럼 레이아웃, 영상 업로드일 때만) */}
+                          {uploadData.type === 'video' && (
+                            <div className="grid grid-cols-2 gap-4">
+                              {/* 단 번호 수정 */}
+                              <div className="min-w-0">
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                  단 번호
+                                </label>
+                                <input
+                                  type="number"
+                                  value={row.number}
+                                  onChange={(e) => handleUpdateRow(sectionIndex, rowIndex, 'number', e.target.value)}
+                                  min="1"
+                                  className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:border-primary focus:outline-none text-gray-800 text-sm"
+                                />
+                              </div>
 
-                          {/* 단별 도안 텍스트 */}
+                              {/* 시작 시간 수정 */}
+                              <div className="min-w-0">
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                  시작 시간
+                                </label>
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <input
+                                    type="text"
+                                    value={row.startTime !== null ? formatTime(row.startTime) : ''}
+                                    onChange={(e) => handleUpdateRow(sectionIndex, rowIndex, 'startTime', e.target.value)}
+                                    placeholder="M:SS"
+                                    className="flex-1 min-w-0 px-3 py-2 border-2 border-gray-200 rounded-lg focus:border-primary focus:outline-none text-gray-800 text-sm"
+                                  />
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleRecordTime(sectionIndex, rowIndex);
+                                    }}
+                                    className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors whitespace-nowrap flex-shrink-0 ${
+                                      row.startTime !== null
+                                        ? 'bg-green-100 text-green-700'
+                                        : 'bg-primary text-white hover:bg-opacity-90'
+                                    }`}
+                                  >
+                                    현재
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 이미지 업로드: 단 이름 수정 */}
+                          {uploadData.type === 'image' && (
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                단 이름
+                              </label>
+                              <input
+                                type="number"
+                                value={row.number}
+                                onChange={(e) => handleUpdateRow(sectionIndex, rowIndex, 'number', e.target.value)}
+                                min="1"
+                                className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:border-primary focus:outline-none text-gray-800 text-sm"
+                              />
+                            </div>
+                          )}
+
+                          {/* 도안 내용 수정 */}
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">
-                              단별 도안 텍스트
+                              도안 내용
                             </label>
                             <textarea
                               value={row.content}
@@ -808,10 +889,10 @@ function UploadStep2({ uploadData, onBack, onNext }) {
                             />
                           </div>
 
-                          {/* 가이드 텍스트 (옵션) */}
+                          {/* 가이드 메모 */}
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">
-                              가이드 텍스트 (옵션)
+                              가이드 메모 (옵션)
                             </label>
                             <textarea
                               value={row.guideMemo || ''}
@@ -849,18 +930,41 @@ function UploadStep2({ uploadData, onBack, onNext }) {
               </div>
             </div>
           ))}
+          
+          {/* 다음 버튼 (리스트 맨 아래, 영상 업로드일 때만) */}
+          {uploadData.type === 'video' && (
+            <div className="px-4 py-6">
+              <button
+                onClick={() => onNext(parsedSections)}
+                disabled={!parsedSections.every(section => 
+                  section.rows.every(row => row.startTime !== null)
+                )}
+                className={`w-full py-4 rounded-lg font-semibold text-base transition-colors ${
+                  parsedSections.every(section => 
+                    section.rows.every(row => row.startTime !== null)
+                  )
+                    ? 'bg-primary text-white hover:bg-opacity-90'
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                단별 시간 기록 완료
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* 3. 하단 CTA */}
-      <div className="sticky bottom-0 bg-white border-t px-4 py-4 z-10">
-        <button
-          onClick={() => onNext(parsedSections)}
-          className="w-full py-4 rounded-lg font-semibold text-base bg-primary text-white hover:bg-opacity-90 transition-colors"
-        >
-          다음
-        </button>
-      </div>
+      {/* 3. 하단 CTA (이미지 업로드일 때만) */}
+      {uploadData.type === 'image' && (
+        <div className="sticky bottom-0 bg-white border-t px-4 py-4 z-10">
+          <button
+            onClick={() => onNext(parsedSections)}
+            className="w-full py-4 rounded-lg font-semibold text-base bg-primary text-white hover:bg-opacity-90 transition-colors"
+          >
+            다음
+          </button>
+        </div>
+      )}
     </div>
   );
 }
