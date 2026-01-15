@@ -5,13 +5,49 @@ export default function KnittingMode({ recipe, project, onClose }) {
   const [mode, setMode] = useState('list'); // 'list' or 'gallery'
   const [expandedRows, setExpandedRows] = useState(new Set());
   const [currentRowIndex, setCurrentRowIndex] = useState(0);
-  const [selectedRowIndex, setSelectedRowIndex] = useState(null); // 선택된 단
-  const [completedRows, setCompletedRows] = useState(new Set(project?.completed_rows || []));
-  const [expandedSections, setExpandedSections] = useState(new Set([0]));
+  
+  // 완료된 단 초기화: 프로젝트가 없거나 진행 기록이 없으면 빈 Set
+  const initialCompletedRows = project?.completed_rows && project.completed_rows.length > 0
+    ? new Set(project.completed_rows)
+    : new Set();
+  const [completedRows, setCompletedRows] = useState(initialCompletedRows);
+  
+  // 선택된 단 초기화: 진행 기록이 없으면 1단(0), 있으면 마지막 완료된 단 + 1
+  const [selectedRowIndex, setSelectedRowIndex] = useState(null); // 초기값은 null, useEffect에서 설정
+  const [expandedSections, setExpandedSections] = useState(new Set());
   const [showSectionInfo, setShowSectionInfo] = useState(new Set());
 
   // 도안 설명을 줄 단위로 분리 및 섹션 추출
   const parsePattern = () => {
+    // 업로드된 parsedSections가 있으면 그것을 사용
+    if (recipe?.parsedSections && recipe.parsedSections.length > 0) {
+      const sections = [];
+      const rows = [];
+      let globalIndex = 0;
+
+      recipe.parsedSections.forEach((section) => {
+        const sectionRows = section.rows.map((row) => {
+          const rowData = {
+            index: globalIndex++,
+            number: row.number,
+            text: `${row.number}R: ${row.content}`,
+            section: section.name,
+          };
+          rows.push(rowData);
+          return rowData;
+        });
+
+        sections.push({
+          name: section.name,
+          guide: section.guide || '',
+          rows: sectionRows,
+        });
+      });
+
+      return { sections, rows };
+    }
+
+    // 기존 방식: description을 파싱
     if (!recipe?.description) return { sections: [], rows: [] };
     
     const lines = recipe.description.split('\n').filter(line => line.trim());
@@ -56,6 +92,46 @@ export default function KnittingMode({ recipe, project, onClose }) {
 
   const { sections, rows: parsedRows } = parsePattern();
   const rows = parsedRows.length > 0 ? parsedRows.map(r => r.text) : (recipe?.description ? recipe.description.split('\n').filter(line => line.trim()) : []);
+
+  // 모든 섹션을 열린 상태로 초기화
+  useEffect(() => {
+    if (sections.length > 0 && expandedSections.size === 0) {
+      const allSectionIndices = new Set(sections.map((_, index) => index));
+      setExpandedSections(allSectionIndices);
+    }
+  }, [sections.length]);
+
+  // 초기 선택 단 설정 및 스크롤
+  useEffect(() => {
+    if (rows.length === 0) return;
+    
+    // 초기 선택 단 계산: 완료된 단이 없으면 0 (1단), 있으면 마지막 완료된 단 + 1
+    let initialSelected = 0;
+    if (initialCompletedRows.size > 0) {
+      const completedIndices = Array.from(initialCompletedRows).sort((a, b) => a - b);
+      const lastCompleted = Math.max(...completedIndices);
+      initialSelected = lastCompleted + 1 < rows.length ? lastCompleted + 1 : lastCompleted;
+    }
+    
+    // 선택된 단 설정
+    if (selectedRowIndex === null) {
+      setSelectedRowIndex(initialSelected);
+    }
+    
+    // 첫 진입 시 선택된 단으로 스크롤 및 포커싱
+    if (mode === 'list') {
+      const targetIndex = selectedRowIndex !== null ? selectedRowIndex : initialSelected;
+      
+      // 선택된 단으로 스크롤 (약간의 지연 후)
+      // 모든 섹션이 이미 열려있으므로 스크롤만 수행
+      setTimeout(() => {
+        const targetRowElement = document.querySelector(`[data-row-index="${targetIndex}"]`);
+        if (targetRowElement) {
+          targetRowElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 150);
+    }
+  }, [rows.length, sections.length]); // rows와 sections가 준비된 후 실행
 
   useEffect(() => {
     // 갤러리 모드일 때 스크롤 방지 및 화면 방향 변경
@@ -161,8 +237,9 @@ export default function KnittingMode({ recipe, project, onClose }) {
   // 현재 진행 중인 단 찾기 (완료되지 않은 첫 번째 단)
   const getCurrentRowIndex = () => {
     const completedIndices = Array.from(completedRows).sort((a, b) => a - b);
-    if (completedIndices.length === 0) return 0;
+    if (completedIndices.length === 0) return 0; // 완료된 단이 없으면 1단(인덱스 0)
     const lastCompleted = Math.max(...completedIndices);
+    // 마지막 완료된 단 다음 단이 현재 단
     return lastCompleted + 1 < rows.length ? lastCompleted + 1 : lastCompleted;
   };
 
@@ -318,10 +395,10 @@ export default function KnittingMode({ recipe, project, onClose }) {
                   </div>
 
                   {/* 섹션 정보 (정보 아이콘 클릭 시 표시) */}
-                  {isInfoShown && (
+                  {isInfoShown && section.guide && (
                     <div className="px-4 pb-3 border-t bg-gray-50">
                       <p className="text-sm text-gray-600 mt-2 leading-relaxed">
-                        이 그룹을 진행할 때 참고할 수 있는 정보입니다. 예를 들어 특별한 기법이나 주의사항이 있을 수 있습니다.
+                        {section.guide}
                       </p>
                     </div>
                   )}
@@ -340,6 +417,7 @@ export default function KnittingMode({ recipe, project, onClose }) {
                         return (
                           <div
                             key={index}
+                            data-row-index={index}
                             className={`border-b last:border-0 ${
                               isCurrent
                                 ? 'bg-primary/10 border-l-4 border-l-primary'

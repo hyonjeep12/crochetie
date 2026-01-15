@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { getRecipes, getProjects, getProjectByRecipeId } from './utils/storage';
+import { getRecipes, getProjects, getProjectByRecipeId, saveRecipe } from './utils/storage';
 import { dummyRecipes } from './utils/dummyData';
 import { parseYouTubeUrl, getYouTubeEmbedUrl } from './utils/urlParser';
 import BottomNav from './components/BottomNav';
@@ -16,7 +16,7 @@ function App() {
   const [selectedRecipe, setSelectedRecipe] = useState(null);
   const [knittingMode, setKnittingMode] = useState(null); // { recipe, project }
   const [uploadBottomSheetOpen, setUploadBottomSheetOpen] = useState(false);
-  const [uploadStep, setUploadStep] = useState(null); // null, 'step1', 'step2'
+  const [uploadStep, setUploadStep] = useState(null); // null, 'step1', 'step2', 'step3'
   const [uploadData, setUploadData] = useState({ type: null, videoId: null, videoUrl: null });
 
   useEffect(() => {
@@ -164,9 +164,25 @@ function App() {
           onBack={() => {
             setUploadStep('step1');
           }}
-          onNext={() => {
-            // Step 3로 이동 - 추후 구현
-            console.log('Step 3로 이동');
+          onNext={(parsedSections) => {
+            // parsedSections를 uploadData에 저장
+            setUploadData(prev => ({ ...prev, parsedSections }));
+            setUploadStep('step3');
+          }}
+        />
+      )}
+
+      {/* 업로드 Step 3 */}
+      {uploadStep === 'step3' && (
+        <UploadStep3
+          uploadData={uploadData}
+          onBack={() => {
+            setUploadStep('step2');
+          }}
+          onComplete={() => {
+            // 업로드 완료 처리
+            handleCloseUploadBottomSheet();
+            handleUploadComplete();
           }}
         />
       )}
@@ -488,6 +504,7 @@ function UploadStep2({ uploadData, onBack, onNext }) {
   const [parsedSections, setParsedSections] = useState([]);
   const [currentTime, setCurrentTime] = useState(0);
   const [player, setPlayer] = useState(null);
+  const [expandedRow, setExpandedRow] = useState(null); // { sectionIndex, rowIndex } - 이미지 업로드용
   const videoRef = useRef(null);
   const playerRef = useRef(null);
 
@@ -588,7 +605,8 @@ function UploadStep2({ uploadData, onBack, onNext }) {
         currentSection.rows.push({
           number: rowNumber,
           content: rowContent,
-          startTime: null, // 시간 기록용
+          startTime: uploadData.type === 'video' ? null : undefined, // 영상일 때만 시간 기록용
+          guideMemo: '', // 가이드 텍스트 (이미지 업로드용)
         });
         return;
       }
@@ -607,10 +625,32 @@ function UploadStep2({ uploadData, onBack, onNext }) {
     return sections;
   };
 
-  // 시간 기록 핸들러
+  // 시간 기록 핸들러 (영상 업로드용)
   const handleRecordTime = (sectionIndex, rowIndex) => {
     const newSections = [...parsedSections];
     newSections[sectionIndex].rows[rowIndex].startTime = Math.floor(currentTime);
+    setParsedSections(newSections);
+  };
+
+  // 카드 확장/축소 (이미지 업로드용)
+  const handleToggleRow = (sectionIndex, rowIndex) => {
+    if (expandedRow && expandedRow.sectionIndex === sectionIndex && expandedRow.rowIndex === rowIndex) {
+      setExpandedRow(null);
+    } else {
+      setExpandedRow({ sectionIndex, rowIndex });
+    }
+  };
+
+  // 단 정보 수정 핸들러 (이미지 업로드용)
+  const handleUpdateRow = (sectionIndex, rowIndex, field, value) => {
+    const newSections = [...parsedSections];
+    if (field === 'number') {
+      newSections[sectionIndex].rows[rowIndex].number = parseInt(value) || 1;
+    } else if (field === 'content') {
+      newSections[sectionIndex].rows[rowIndex].content = value;
+    } else if (field === 'guideMemo') {
+      newSections[sectionIndex].rows[rowIndex].guideMemo = value;
+    }
     setParsedSections(newSections);
   };
 
@@ -639,22 +679,23 @@ function UploadStep2({ uploadData, onBack, onNext }) {
         </button>
         
         {/* 타이틀 */}
-        <h1 className="text-lg font-bold text-gray-800">단별 시간 기록</h1>
+        <h1 className="text-lg font-bold text-gray-800">
+          {uploadData.type === 'video' ? '단별 시간 기록' : '도안 편집'}
+        </h1>
       </div>
-
-      {/* 영상 영역 (상단 고정, 화면 가로폭에 맞춤) */}
-      {uploadData.type === 'video' && videoEmbedUrl && (
-        <div className="w-full bg-gray-100 relative" style={{ aspectRatio: '16/9' }}>
-          <div ref={videoRef} className="w-full h-full" />
-          {/* 현재 시간 표시 */}
-          <div className="absolute bottom-2 right-2 bg-black/70 text-white px-3 py-1 rounded text-sm z-10">
-            {formatTime(currentTime)}
-          </div>
-        </div>
-      )}
 
       {/* 2. 메인 영역 */}
       <div className="flex-1 overflow-y-auto pb-24">
+        {/* 영상 영역 (영상으로 올리기일 경우만) */}
+        {uploadData.type === 'video' && videoEmbedUrl && (
+          <div className="w-full aspect-video bg-gray-100 relative">
+            <div ref={videoRef} className="w-full h-full" />
+            {/* 현재 시간 표시 */}
+            <div className="absolute bottom-2 right-2 bg-black/70 text-white px-3 py-1 rounded text-sm z-10">
+              {formatTime(currentTime)}
+            </div>
+          </div>
+        )}
 
         {/* 파싱된 단 리스트 */}
         <div className="px-4 py-6 space-y-6">
@@ -670,35 +711,141 @@ function UploadStep2({ uploadData, onBack, onNext }) {
 
               {/* 단 리스트 */}
               <div className="divide-y">
-                {section.rows.map((row, rowIndex) => (
-                  <div key={rowIndex} className="px-4 py-3 flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-gray-800">{row.number}R:</span>
-                        <span className="text-gray-700">{row.content}</span>
+                {section.rows.map((row, rowIndex) => {
+                  const isExpanded = uploadData.type === 'image' && expandedRow?.sectionIndex === sectionIndex && expandedRow?.rowIndex === rowIndex;
+                  
+                  return (
+                    <div key={rowIndex}>
+                      {/* 단 카드 헤더 */}
+                      <div className="px-4 py-3 flex items-center justify-between">
+                        <button
+                          onClick={() => {
+                            if (uploadData.type === 'image') {
+                              handleToggleRow(sectionIndex, rowIndex);
+                            }
+                          }}
+                          className={`flex-1 flex items-center justify-between text-left ${uploadData.type === 'image' ? 'hover:bg-gray-50 transition-colors -mx-4 px-4 py-0' : ''}`}
+                        >
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-gray-800">{row.number}단:</span>
+                              <span className="text-gray-700 text-sm truncate">
+                                {row.content.length > 40 ? row.content.substring(0, 40) + '...' : row.content}
+                              </span>
+                            </div>
+                            {/* 영상 업로드: 시작 시간 표시 */}
+                            {uploadData.type === 'video' && row.startTime !== null && (
+                              <p className="text-xs text-primary mt-1">
+                                시작 시간: {formatTime(row.startTime)}
+                              </p>
+                            )}
+                            {/* 이미지 업로드: 가이드 텍스트 표시 (있을 때만) */}
+                            {uploadData.type === 'image' && row.guideMemo && (
+                              <p className="text-xs text-gray-500 mt-1 italic">
+                                💡 {row.guideMemo}
+                              </p>
+                            )}
+                          </div>
+                          
+                          {/* 이미지 업로드: 확장 아이콘 */}
+                          {uploadData.type === 'image' && (
+                            <svg
+                              width="20"
+                              height="20"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              xmlns="http://www.w3.org/2000/svg"
+                              className={`text-gray-400 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`}
+                            >
+                              <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          )}
+                        </button>
+                        
+                        {/* 영상 업로드: 시간 기록 버튼 */}
+                        {uploadData.type === 'video' && (
+                          <button
+                            onClick={() => handleRecordTime(sectionIndex, rowIndex)}
+                            className={`ml-4 px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+                              row.startTime !== null
+                                ? 'bg-green-100 text-green-700'
+                                : 'bg-primary text-white hover:bg-opacity-90'
+                            }`}
+                          >
+                            {row.startTime !== null ? '✓ 기록됨' : '시간 기록'}
+                          </button>
+                        )}
                       </div>
-                      {row.startTime !== null && (
-                        <p className="text-xs text-primary mt-1">
-                          시작 시간: {formatTime(row.startTime)}
-                        </p>
+
+                      {/* 이미지 업로드: 확장된 수정 영역 */}
+                      {uploadData.type === 'image' && isExpanded && (
+                        <div className="px-4 pb-4 space-y-4 bg-gray-50 border-t">
+                          {/* 단 이름 수정 */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              단 이름
+                            </label>
+                            <input
+                              type="number"
+                              value={row.number}
+                              onChange={(e) => handleUpdateRow(sectionIndex, rowIndex, 'number', e.target.value)}
+                              min="1"
+                              className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:border-primary focus:outline-none text-gray-800 text-sm"
+                            />
+                          </div>
+
+                          {/* 단별 도안 텍스트 */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              단별 도안 텍스트
+                            </label>
+                            <textarea
+                              value={row.content}
+                              onChange={(e) => handleUpdateRow(sectionIndex, rowIndex, 'content', e.target.value)}
+                              placeholder="도안 내용을 입력하세요"
+                              className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:border-primary focus:outline-none text-gray-800 text-sm resize-none"
+                              rows="3"
+                            />
+                          </div>
+
+                          {/* 가이드 텍스트 (옵션) */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              가이드 텍스트 (옵션)
+                            </label>
+                            <textarea
+                              value={row.guideMemo || ''}
+                              onChange={(e) => handleUpdateRow(sectionIndex, rowIndex, 'guideMemo', e.target.value)}
+                              placeholder="이 단에 대한 참고 메모를 입력하세요"
+                              className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:border-primary focus:outline-none text-gray-800 text-sm resize-none"
+                              rows="2"
+                            />
+                          </div>
+
+                          {/* 닫기 컨트롤 */}
+                          <div className="pt-2 border-t border-gray-200">
+                            <button
+                              onClick={() => handleToggleRow(sectionIndex, rowIndex)}
+                              className="w-full flex items-center justify-center gap-1 text-gray-600 hover:text-gray-800 transition-colors py-2"
+                            >
+                              <span className="text-sm">접기</span>
+                              <svg
+                                width="16"
+                                height="16"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                xmlns="http://www.w3.org/2000/svg"
+                                className="text-gray-600"
+                              >
+                                <path d="M18 15l-6-6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
                       )}
                     </div>
-                    
-                    {/* 시간 기록 버튼 (영상이 있을 때만) */}
-                    {uploadData.type === 'video' && (
-                      <button
-                        onClick={() => handleRecordTime(sectionIndex, rowIndex)}
-                        className={`ml-4 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                          row.startTime !== null
-                            ? 'bg-green-100 text-green-700'
-                            : 'bg-primary text-white hover:bg-opacity-90'
-                        }`}
-                      >
-                        {row.startTime !== null ? '✓ 기록됨' : '시간 기록'}
-                      </button>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ))}
@@ -708,10 +855,163 @@ function UploadStep2({ uploadData, onBack, onNext }) {
       {/* 3. 하단 CTA */}
       <div className="sticky bottom-0 bg-white border-t px-4 py-4 z-10">
         <button
-          onClick={onNext}
+          onClick={() => onNext(parsedSections)}
           className="w-full py-4 rounded-lg font-semibold text-base bg-primary text-white hover:bg-opacity-90 transition-colors"
         >
           다음
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// 업로드 Step 3: 작품 기본 설명 입력
+function UploadStep3({ uploadData, onBack, onComplete }) {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
+  const fileInputRef = useRef(null);
+
+  const handleImageClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleImageChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setImageFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleComplete = () => {
+    if (!title.trim()) {
+      alert('작품 이름을 입력해주세요.');
+      return;
+    }
+
+    // 레시피 데이터 생성
+    const recipeData = {
+      title: title.trim(),
+      description: uploadData.patternText || '', // Step 1에서 입력한 도안 텍스트
+      additional_note: description.trim(), // Step 3에서 입력한 설명
+      thumbnail_url: imagePreview || '', // 대표 이미지 (base64)
+      source_url: uploadData.videoUrl || '', // YouTube URL (있는 경우)
+      pattern_images: imagePreview ? [imagePreview] : [], // 패턴 이미지 배열
+      is_public: true, // 홈화면에 표시
+      // Step 2에서 파싱한 섹션 데이터 저장 (뜨개 모드에서 사용)
+      parsedSections: uploadData.parsedSections || [],
+    };
+
+    // 레시피 저장
+    saveRecipe(recipeData);
+    
+    onComplete();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-white z-50 flex flex-col">
+      {/* 상단 */}
+      <div className="sticky top-0 bg-white border-b px-4 py-3 z-10">
+        <div className="flex items-center gap-3 mb-2">
+          {/* 뒤로가기 버튼 */}
+          <button
+            onClick={onBack}
+            className="text-gray-600 hover:text-gray-800"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M15 18L9 12L15 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+          
+          {/* 타이틀 */}
+          <h1 className="text-lg font-bold text-gray-800">도안 만들기</h1>
+        </div>
+        
+        {/* 단계 안내 */}
+        <p className="text-sm text-gray-600 ml-11">Step 3 작품 기본 설명</p>
+      </div>
+
+      {/* 메인 영역 */}
+      <div className="flex-1 overflow-y-auto pb-24">
+        <div className="px-4 py-6 space-y-6">
+          {/* 대표 이미지 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              대표 이미지
+            </label>
+            <button
+              onClick={handleImageClick}
+              className="w-full aspect-square bg-gray-100 rounded-lg border-2 border-dashed border-gray-300 hover:border-primary transition-colors flex items-center justify-center overflow-hidden"
+            >
+              {imagePreview ? (
+                <img 
+                  src={imagePreview} 
+                  alt="대표 이미지" 
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="flex flex-col items-center gap-2 text-gray-400">
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2"/>
+                    <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/>
+                    <path d="M21 15l-5-5L5 21" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
+                  <span className="text-sm">이미지 업로드</span>
+                </div>
+              )}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleImageChange}
+              className="hidden"
+            />
+          </div>
+
+          {/* 이름 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              이름
+            </label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="작품 이름을 입력하세요"
+              className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-primary focus:outline-none text-gray-800"
+            />
+          </div>
+
+          {/* 도안 설명 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              도안 설명
+            </label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="도안에 대한 설명을 입력하세요"
+              className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-primary focus:outline-none text-gray-800 resize-none"
+              rows="6"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* 하단 CTA */}
+      <div className="sticky bottom-0 bg-white border-t px-4 py-4 z-10">
+        <button
+          onClick={handleComplete}
+          className="w-full py-4 rounded-lg font-semibold text-base bg-primary text-white hover:bg-opacity-90 transition-colors"
+        >
+          도안 업로드
         </button>
       </div>
     </div>
