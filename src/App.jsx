@@ -73,7 +73,7 @@ function App() {
 
   const handleBackFromStep1 = () => {
     setUploadStep(null);
-    setUploadData({ type: null, videoId: null, videoUrl: null });
+    // uploadData는 보존 (type, videoId, videoUrl, patternText 등)
     setUploadBottomSheetOpen(true);
   };
 
@@ -161,7 +161,11 @@ function App() {
       {uploadStep === 'step2' && (
         <UploadStep2
           uploadData={uploadData}
-          onBack={() => {
+          onBack={(parsedSections) => {
+            // parsedSections를 uploadData에 저장
+            if (parsedSections) {
+              setUploadData(prev => ({ ...prev, parsedSections }));
+            }
             setUploadStep('step1');
           }}
           onNext={(parsedSections) => {
@@ -176,7 +180,14 @@ function App() {
       {uploadStep === 'step3' && (
         <UploadStep3
           uploadData={uploadData}
-          onBack={() => {
+          onBack={(step3Data) => {
+            // Step 3의 현재 입력값을 uploadData에 저장
+            setUploadData(prev => ({
+              ...prev,
+              title: step3Data?.title || prev.title,
+              description: step3Data?.description || prev.description,
+              imagePreview: step3Data?.imagePreview || prev.imagePreview,
+            }));
             setUploadStep('step2');
           }}
           onComplete={() => {
@@ -422,7 +433,7 @@ function HomeView({ recipes, onView, onWish }) {
 
 // 업로드 Step 1
 function UploadStep1({ uploadData, onBack, onNext }) {
-  const [patternText, setPatternText] = useState('');
+  const [patternText, setPatternText] = useState(uploadData.patternText || '');
 
   const videoEmbedUrl = uploadData.videoId ? getYouTubeEmbedUrl(uploadData.videoId) : null;
 
@@ -501,16 +512,17 @@ function UploadStep1({ uploadData, onBack, onNext }) {
 
 // 업로드 Step 2
 function UploadStep2({ uploadData, onBack, onNext }) {
-  const [parsedSections, setParsedSections] = useState([]);
+  // 이전에 저장된 parsedSections가 있으면 사용, 없으면 파싱
+  const [parsedSections, setParsedSections] = useState(uploadData.parsedSections || []);
   const [currentTime, setCurrentTime] = useState(0);
   const [player, setPlayer] = useState(null);
-  const [expandedRow, setExpandedRow] = useState(null); // { sectionIndex, rowIndex } - 이미지 업로드용
+  const [expandedRow, setExpandedRow] = useState(null); // { sectionIndex, rowIndex }
   const videoRef = useRef(null);
   const playerRef = useRef(null);
 
-  // 도안 파싱
+  // 도안 파싱 (parsedSections가 없을 때만)
   useEffect(() => {
-    if (uploadData.patternText) {
+    if (uploadData.patternText && parsedSections.length === 0) {
       const parsed = parsePattern(uploadData.patternText);
       setParsedSections(parsed);
     }
@@ -607,6 +619,7 @@ function UploadStep2({ uploadData, onBack, onNext }) {
           content: rowContent,
           startTime: uploadData.type === 'video' ? null : undefined, // 영상일 때만 시간 기록용
           guideMemo: '', // 가이드 텍스트 (이미지 업로드용)
+          imageUrl: '', // 이미지 URL (이미지 업로드용)
         });
         return;
       }
@@ -670,8 +683,20 @@ function UploadStep2({ uploadData, onBack, onNext }) {
       }
     } else if (field === 'guideMemo') {
       newSections[sectionIndex].rows[rowIndex].guideMemo = value;
+    } else if (field === 'imageUrl') {
+      newSections[sectionIndex].rows[rowIndex].imageUrl = value;
     }
     setParsedSections(newSections);
+  };
+
+  // 이미지 업로드 핸들러 (이미지 업로드용)
+  const handleImageUpload = (sectionIndex, rowIndex, file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      handleUpdateRow(sectionIndex, rowIndex, 'imageUrl', reader.result);
+    };
+    reader.readAsDataURL(file);
   };
 
   // 시간 포맷팅
@@ -690,7 +715,7 @@ function UploadStep2({ uploadData, onBack, onNext }) {
       <div className="sticky top-0 bg-white border-b px-4 py-3 flex items-center gap-3 z-10">
         {/* 뒤로가기 버튼 */}
         <button
-          onClick={onBack}
+          onClick={() => onBack(parsedSections)}
           className="text-gray-600 hover:text-gray-800"
         >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -774,6 +799,15 @@ function UploadStep2({ uploadData, onBack, onNext }) {
                               </p>
                             )}
                           </div>
+                          
+                          {/* 이미지 아이콘 (오른쪽, 이미지 업로드일 때만) */}
+                          {uploadData.type === 'image' && row.imageUrl && (
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="flex-shrink-0 text-primary ml-2">
+                              <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2"/>
+                              <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/>
+                              <path d="M21 15l-5-5L5 21" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                            </svg>
+                          )}
                         </button>
                         
                         {/* 시간 표시 + 시간 기록 버튼 (오른쪽, 영상 업로드일 때만) */}
@@ -903,6 +937,59 @@ function UploadStep2({ uploadData, onBack, onNext }) {
                             />
                           </div>
 
+                          {/* 이미지 업로드 (이미지 업로드일 때만) */}
+                          {uploadData.type === 'image' && (
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                이미지
+                              </label>
+                              <div className="space-y-2">
+                                {row.imageUrl ? (
+                                  <div className="relative">
+                                    <img 
+                                      src={row.imageUrl} 
+                                      alt={`${row.number}단 이미지`}
+                                      className="w-full rounded-lg border-2 border-gray-200 object-cover"
+                                      style={{ maxHeight: '200px' }}
+                                    />
+                                    <button
+                                      onClick={() => handleUpdateRow(sectionIndex, rowIndex, 'imageUrl', '')}
+                                      className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-600 transition-colors"
+                                    >
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                                      </svg>
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <label className="block">
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) {
+                                          handleImageUpload(sectionIndex, rowIndex, file);
+                                        }
+                                      }}
+                                      className="hidden"
+                                    />
+                                    <div className="w-full h-32 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center cursor-pointer hover:border-primary transition-colors">
+                                      <div className="flex flex-col items-center gap-2 text-gray-400">
+                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                          <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2"/>
+                                          <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/>
+                                          <path d="M21 15l-5-5L5 21" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                                        </svg>
+                                        <span className="text-xs">이미지 업로드</span>
+                                      </div>
+                                    </div>
+                                  </label>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
                           {/* 닫기 컨트롤 */}
                           <div className="pt-2 border-t border-gray-200">
                             <button
@@ -971,10 +1058,11 @@ function UploadStep2({ uploadData, onBack, onNext }) {
 
 // 업로드 Step 3: 작품 기본 설명 입력
 function UploadStep3({ uploadData, onBack, onComplete }) {
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
+  // 이전에 입력한 데이터가 있으면 복원
+  const [title, setTitle] = useState(uploadData.title || '');
+  const [description, setDescription] = useState(uploadData.description || '');
   const [imageFile, setImageFile] = useState(null);
-  const [imagePreview, setImagePreview] = useState(null);
+  const [imagePreview, setImagePreview] = useState(uploadData.imagePreview || null);
   const fileInputRef = useRef(null);
 
   const handleImageClick = () => {
@@ -988,6 +1076,10 @@ function UploadStep3({ uploadData, onBack, onComplete }) {
       const reader = new FileReader();
       reader.onloadend = () => {
         setImagePreview(reader.result);
+        // 이미지 미리보기를 uploadData에 저장
+        if (onComplete) {
+          // 이미지는 별도로 관리하므로 여기서는 상태만 업데이트
+        }
       };
       reader.readAsDataURL(file);
     }
@@ -1018,6 +1110,16 @@ function UploadStep3({ uploadData, onBack, onComplete }) {
     onComplete();
   };
 
+  // 뒤로가기 시 현재 입력값을 uploadData에 저장
+  const handleBack = () => {
+    // 현재 입력값을 uploadData에 저장
+    onBack({
+      title,
+      description,
+      imagePreview,
+    });
+  };
+
   return (
     <div className="fixed inset-0 bg-white z-50 flex flex-col">
       {/* 상단 */}
@@ -1025,7 +1127,7 @@ function UploadStep3({ uploadData, onBack, onComplete }) {
         <div className="flex items-center gap-3 mb-2">
           {/* 뒤로가기 버튼 */}
           <button
-            onClick={onBack}
+            onClick={handleBack}
             className="text-gray-600 hover:text-gray-800"
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
