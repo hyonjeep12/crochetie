@@ -618,7 +618,6 @@ export default function KnittingMode({ recipe, project, onClose }) {
   }
 
   // ===== 갤러리 모드 =====
-  // 기획서에 맞춘 새로운 갤러리 모드
   return (
     <div className="fixed inset-0 bg-gray-900 z-50 flex flex-col">
       {/* ===== 1. 상단 바 (우측 상단에 완료 버튼 + 닫기 버튼) ===== */}
@@ -632,30 +631,19 @@ export default function KnittingMode({ recipe, project, onClose }) {
             ← 목록
           </button>
 
-          {/* 오른쪽: 완료 버튼 + 닫기 버튼 */}
-          <div className="flex items-center gap-2 pointer-events-auto">
-            {/* 단 완료 버튼 - 기획서: 우측 상단 위치 */}
-            <button
-              onClick={() => toggleRowComplete(currentRowIndex)}
-              className={`px-5 py-2 rounded-full font-semibold text-sm transition-colors ${
-                completedRows.has(currentRowIndex)
-                  ? 'bg-green-500 text-white hover:bg-green-600'
-                  : 'bg-yellow-400 text-black hover:bg-yellow-500'
-              }`}
-            >
-              {completedRows.has(currentRowIndex) 
-                ? `${currentRowIndex + 1}단 완료됨 ✓` 
-                : `${currentRowIndex + 1}단 완료`}
-            </button>
-
-            {/* 닫기 버튼 */}
-            <button
-              onClick={onClose}
-              className="bg-black/50 backdrop-blur-sm text-white rounded-full w-9 h-9 flex items-center justify-center hover:bg-black/70 transition-colors text-xl"
-            >
-              ×
-            </button>
-          </div>
+{/* 오른쪽: 완료 버튼만 (닫기 버튼 제거) */}
+<button
+  onClick={() => toggleRowComplete(currentRowIndex)}
+  className={`pointer-events-auto px-6 py-2.5 rounded-full font-semibold text-sm transition-colors shadow-lg ${
+    completedRows.has(currentRowIndex)
+      ? 'bg-green-500 text-white hover:bg-green-600'
+      : 'bg-yellow-400 text-black hover:bg-yellow-500'
+  }`}
+>
+  {completedRows.has(currentRowIndex) 
+    ? `${currentRowIndex + 1}단 완료됨 ✓` 
+    : `${currentRowIndex + 1}단 완료`}
+</button>
         </div>
       </div>
 
