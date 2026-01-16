@@ -150,9 +150,9 @@ function App() {
         <UploadStep1
           uploadData={uploadData}
           onBack={handleBackFromStep1}
-          onNext={(patternText) => {
+          onNext={(patternText, videoId, videoUrl) => {
             setUploadStep('step2');
-            setUploadData(prev => ({ ...prev, patternText }));
+            setUploadData(prev => ({ ...prev, patternText, videoId, videoUrl }));
           }}
         />
       )}
@@ -207,7 +207,8 @@ function UploadBottomSheet({ onClose, onGoToStep1 }) {
   const [youtubeUrl, setYoutubeUrl] = useState('');
 
   const handleVideoUpload = () => {
-    setStep('video');
+    //바로 step1으로 이동 (URL입력은 step1에서 함)
+    onGoToStep1('video');
   };
 
   const handleImageUpload = () => {
@@ -434,12 +435,26 @@ function HomeView({ recipes, onView, onWish }) {
 // 업로드 Step 1
 function UploadStep1({ uploadData, onBack, onNext }) {
   const [patternText, setPatternText] = useState(uploadData.patternText || '');
+  //새로 추가: URL 입력 상태
+  const [youtubeUrl, setYoutubeUrl] = useState(uploadData.videoUrl || '');
+  const [videoId, setVideoId] = useState(uploadData.videoId || null);
 
-  const videoEmbedUrl = uploadData.videoId ? getYouTubeEmbedUrl(uploadData.videoId) : null;
+  const videoEmbedUrl = videoId ? getYouTubeEmbedUrl(videoId) : null;
+
+  //새로 추가: 영상 불러오기 함수
+  const handleLoadVideo = () => {
+    if (!youtubeUrl.trim()) return;
+    const parsed = parseYouTubeUrl(youtubeUrl);
+    if (parsed) {
+      setVideoId(parsed);
+    } else {
+      alert('유효한 유튜브 URL을 입력해주세요.');
+    }
+  };
 
   const handleNext = () => {
     if (patternText.trim()) {
-      onNext(patternText);
+      onNext(patternText, videoId, youtubeUrl);
     }
   };
 
@@ -463,19 +478,51 @@ function UploadStep1({ uploadData, onBack, onNext }) {
 
       {/* 2. 메인 영역 */}
       <div className="flex-1 overflow-y-auto pb-24">
-        {/* 영상 영역 (영상으로 올리기일 경우) */}
-        {uploadData.type === 'video' && videoEmbedUrl && (
-          <div className="w-full aspect-video bg-gray-100">
-            <iframe
-              src={videoEmbedUrl}
-              title="YouTube video player"
-              frameBorder="0"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-              className="w-full h-full"
-            />
-          </div>
-        )}
+ {/* 영상 업로드: URL 입력 + 영상 표시 */}
+ {uploadData.type === 'video' && (
+    <>
+      {/* URL 입력 영역 */}
+      <div className="px-4 pt-4">
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          YouTube 영상 URL
+        </label>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={youtubeUrl}
+            onChange={(e) => setYoutubeUrl(e.target.value)}
+            placeholder="https://www.youtube.com/watch?v=..."
+            className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-primary focus:outline-none text-gray-800"
+          />
+          <button
+            onClick={handleLoadVideo}
+            disabled={!youtubeUrl.trim()}
+            className={`px-4 py-3 rounded-lg font-semibold transition-colors ${
+              youtubeUrl.trim()
+                ? 'bg-primary text-white hover:bg-opacity-90'
+                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+            }`}
+          >
+            불러오기
+          </button>
+        </div>
+      </div>
+
+      {/* 영상 미리보기 (불러온 후에만 표시) */}
+      {videoEmbedUrl && (
+        <div className="w-full aspect-video bg-gray-100 mt-4">
+          <iframe
+            src={videoEmbedUrl}
+            title="YouTube video player"
+            frameBorder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+            className="w-full h-full"
+          />
+        </div>
+      )}
+    </>
+  )}
 
         {/* 도안 텍스트 입력 영역 */}
         <div className="px-4 py-6">
@@ -496,7 +543,7 @@ function UploadStep1({ uploadData, onBack, onNext }) {
       <div className="sticky bottom-0 bg-white border-t px-4 py-4 z-10">
         <button
           onClick={handleNext}
-          disabled={!patternText.trim()}
+          disabled={!patternText.trim() || (uploadData.type === 'video' && !videoId)}
           className={`w-full py-4 rounded-lg font-semibold text-base transition-colors ${
             patternText.trim()
               ? 'bg-primary text-white hover:bg-opacity-90'
@@ -619,7 +666,6 @@ function UploadStep2({ uploadData, onBack, onNext }) {
           content: rowContent,
           startTime: uploadData.type === 'video' ? null : undefined, // 영상일 때만 시간 기록용
           guideMemo: '', // 가이드 텍스트 (이미지 업로드용)
-          imageUrl: '', // 이미지 URL (이미지 업로드용)
         });
         return;
       }
@@ -683,20 +729,8 @@ function UploadStep2({ uploadData, onBack, onNext }) {
       }
     } else if (field === 'guideMemo') {
       newSections[sectionIndex].rows[rowIndex].guideMemo = value;
-    } else if (field === 'imageUrl') {
-      newSections[sectionIndex].rows[rowIndex].imageUrl = value;
     }
     setParsedSections(newSections);
-  };
-
-  // 이미지 업로드 핸들러 (이미지 업로드용)
-  const handleImageUpload = (sectionIndex, rowIndex, file) => {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      handleUpdateRow(sectionIndex, rowIndex, 'imageUrl', reader.result);
-    };
-    reader.readAsDataURL(file);
   };
 
   // 시간 포맷팅
@@ -799,15 +833,6 @@ function UploadStep2({ uploadData, onBack, onNext }) {
                               </p>
                             )}
                           </div>
-                          
-                          {/* 이미지 아이콘 (오른쪽, 이미지 업로드일 때만) */}
-                          {uploadData.type === 'image' && row.imageUrl && (
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="flex-shrink-0 text-primary ml-2">
-                              <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2"/>
-                              <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/>
-                              <path d="M21 15l-5-5L5 21" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                            </svg>
-                          )}
                         </button>
                         
                         {/* 시간 표시 + 시간 기록 버튼 (오른쪽, 영상 업로드일 때만) */}
@@ -937,59 +962,6 @@ function UploadStep2({ uploadData, onBack, onNext }) {
                             />
                           </div>
 
-                          {/* 이미지 업로드 (이미지 업로드일 때만) */}
-                          {uploadData.type === 'image' && (
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">
-                                이미지
-                              </label>
-                              <div className="space-y-2">
-                                {row.imageUrl ? (
-                                  <div className="relative">
-                                    <img 
-                                      src={row.imageUrl} 
-                                      alt={`${row.number}단 이미지`}
-                                      className="w-full rounded-lg border-2 border-gray-200 object-cover"
-                                      style={{ maxHeight: '200px' }}
-                                    />
-                                    <button
-                                      onClick={() => handleUpdateRow(sectionIndex, rowIndex, 'imageUrl', '')}
-                                      className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-600 transition-colors"
-                                    >
-                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                        <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                                      </svg>
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <label className="block">
-                                    <input
-                                      type="file"
-                                      accept="image/*"
-                                      onChange={(e) => {
-                                        const file = e.target.files?.[0];
-                                        if (file) {
-                                          handleImageUpload(sectionIndex, rowIndex, file);
-                                        }
-                                      }}
-                                      className="hidden"
-                                    />
-                                    <div className="w-full h-32 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center cursor-pointer hover:border-primary transition-colors">
-                                      <div className="flex flex-col items-center gap-2 text-gray-400">
-                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                          <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2"/>
-                                          <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/>
-                                          <path d="M21 15l-5-5L5 21" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                                        </svg>
-                                        <span className="text-xs">이미지 업로드</span>
-                                      </div>
-                                    </div>
-                                  </label>
-                                )}
-                              </div>
-                            </div>
-                          )}
-
                           {/* 닫기 컨트롤 */}
                           <div className="pt-2 border-t border-gray-200">
                             <button
@@ -1069,19 +1041,69 @@ function UploadStep3({ uploadData, onBack, onComplete }) {
     fileInputRef.current?.click();
   };
 
-  const handleImageChange = (e) => {
+  // 이미지 압축 함수
+  const compressImage = (file, maxWidth = 800, quality = 0.8) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+
+          // 비율 유지하면서 크기 조정
+          if (width > maxWidth) {
+            height = (height * maxWidth) / width;
+            width = maxWidth;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+              } else {
+                reject(new Error('이미지 압축 실패'));
+              }
+            },
+            'image/jpeg',
+            quality
+          );
+        };
+        img.onerror = reject;
+        img.src = e.target.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleImageChange = async (e) => {
     const file = e.target.files?.[0];
     if (file) {
       setImageFile(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result);
-        // 이미지 미리보기를 uploadData에 저장
-        if (onComplete) {
-          // 이미지는 별도로 관리하므로 여기서는 상태만 업데이트
-        }
-      };
-      reader.readAsDataURL(file);
+      try {
+        // 이미지 압축
+        const compressedImage = await compressImage(file);
+        setImagePreview(compressedImage);
+      } catch (error) {
+        console.error('이미지 압축 실패:', error);
+        // 압축 실패 시 원본 사용
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setImagePreview(reader.result);
+        };
+        reader.readAsDataURL(file);
+      }
     }
   };
 
@@ -1091,23 +1113,33 @@ function UploadStep3({ uploadData, onBack, onComplete }) {
       return;
     }
 
-    // 레시피 데이터 생성
-    const recipeData = {
-      title: title.trim(),
-      description: uploadData.patternText || '', // Step 1에서 입력한 도안 텍스트
-      additional_note: description.trim(), // Step 3에서 입력한 설명
-      thumbnail_url: imagePreview || '', // 대표 이미지 (base64)
-      source_url: uploadData.videoUrl || '', // YouTube URL (있는 경우)
-      pattern_images: imagePreview ? [imagePreview] : [], // 패턴 이미지 배열
-      is_public: true, // 홈화면에 표시
-      // Step 2에서 파싱한 섹션 데이터 저장 (뜨개 모드에서 사용)
-      parsedSections: uploadData.parsedSections || [],
-    };
+    try {
+      // 레시피 데이터 생성
+      const recipeData = {
+        title: title.trim(),
+        description: uploadData.patternText || '', // Step 1에서 입력한 도안 텍스트
+        additional_note: description.trim(), // Step 3에서 입력한 설명
+        thumbnail_url: imagePreview || '', // 대표 이미지 (base64)
+        source_url: uploadData.videoUrl || '', // YouTube URL (있는 경우)
+        pattern_images: imagePreview ? [imagePreview] : [], // 패턴 이미지 배열
+        is_public: true, // 홈화면에 표시
+        // Step 2에서 파싱한 섹션 데이터 저장 (뜨개 모드에서 사용)
+        parsedSections: uploadData.parsedSections || [],
+      };
 
-    // 레시피 저장
-    saveRecipe(recipeData);
-    
-    onComplete();
+      // 레시피 저장
+      saveRecipe(recipeData);
+      
+      onComplete();
+    } catch (error) {
+      console.error('레시피 저장 실패:', error);
+      // localStorage 크기 제한 오류인 경우
+      if (error.name === 'QuotaExceededError' || error.message?.includes('quota') || error.message?.includes('exceeded')) {
+        alert('저장 공간이 부족합니다. 이미지 크기를 줄이거나 다른 이미지를 선택해주세요.');
+      } else {
+        alert('업로드 중 오류가 발생했습니다. 다시 시도해주세요.');
+      }
+    }
   };
 
   // 뒤로가기 시 현재 입력값을 uploadData에 저장
