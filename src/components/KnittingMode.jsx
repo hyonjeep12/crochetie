@@ -2,20 +2,26 @@ import { useState, useEffect } from 'react';
 import { saveProject } from '../utils/storage';
 
 export default function KnittingMode({ recipe, project, onClose }) {
-  const [mode, setMode] = useState('list'); // 'list' or 'gallery'
-  const [expandedRows, setExpandedRows] = useState(new Set());
-  const [currentRowIndex, setCurrentRowIndex] = useState(0);
+  // ===== 1. 모드 관리 =====
+  const [mode, setMode] = useState('list'); // 'list' 또는 'gallery' 모드
   
-  // 완료된 단 초기화: 프로젝트가 없거나 진행 기록이 없으면 빈 Set
+  // ===== 2. 리스트 모드 전용 상태 =====
+  const [expandedRows, setExpandedRows] = useState(new Set()); // 펼쳐진 단들
+  const [expandedSections, setExpandedSections] = useState(new Set()); // 펼쳐진 섹션들
+  const [showSectionInfo, setShowSectionInfo] = useState(new Set()); // 섹션 정보 표시
+  const [selectedRowIndex, setSelectedRowIndex] = useState(null); // 선택된 단
+  
+  // ===== 3. 갤러리 모드 전용 상태 =====
+  const [drawerOpen, setDrawerOpen] = useState(false); // 사이드 단 목록 열림/닫힘
+  const [currentRowIndex, setCurrentRowIndex] = useState(0); // 현재 보고 있는 단
+  const [touchStart, setTouchStart] = useState(0); // 스와이프 시작 위치 (X 좌표)
+  
+  // ===== 4. 공유 진행 상태 (리스트 & 갤러리 모두 사용) =====
+  // 완료된 단들을 저장 (예: 1단, 2단, 3단 완료 → Set {0, 1, 2})
   const initialCompletedRows = project?.completed_rows && project.completed_rows.length > 0
     ? new Set(project.completed_rows)
     : new Set();
   const [completedRows, setCompletedRows] = useState(initialCompletedRows);
-  
-  // 선택된 단 초기화: 진행 기록이 없으면 1단(0), 있으면 마지막 완료된 단 + 1
-  const [selectedRowIndex, setSelectedRowIndex] = useState(null); // 초기값은 null, useEffect에서 설정
-  const [expandedSections, setExpandedSections] = useState(new Set());
-  const [showSectionInfo, setShowSectionInfo] = useState(new Set());
 
   // 도안 설명을 줄 단위로 분리 및 섹션 추출
   const parsePattern = () => {
@@ -193,6 +199,40 @@ export default function KnittingMode({ recipe, project, onClose }) {
       newExpanded.add(index);
     }
     setExpandedRows(newExpanded);
+  };
+
+  // ===== 갤러리 모드: 터치 스와이프 함수들 =====
+  // 손가락으로 화면을 좌우로 밀어서 단을 넘기는 기능
+  
+  // 1. 터치 시작: 손가락을 화면에 댔을 때
+  const onTouchStart = (e) => {
+    setTouchStart(e.touches[0].clientX); // 시작 X 좌표 저장
+  };
+
+  // 2. 터치 이동 중: 손가락을 화면에 대고 움직일 때
+  const onTouchMove = (e) => {
+    // 여기서는 아무것도 안 해도 됨 (필요하면 미리보기 추가 가능)
+  };
+
+  // 3. 터치 끝: 손가락을 화면에서 뗐을 때
+  const onTouchEnd = (e) => {
+    const touchEnd = e.changedTouches[0].clientX; // 끝 X 좌표
+    const difference = touchStart - touchEnd; // 움직인 거리
+    
+    // 50px 이상 움직였을 때만 단 넘김
+    if (Math.abs(difference) > 50) {
+      if (difference > 0) {
+        // 왼쪽으로 밀었을 때 → 다음 단으로
+        if (currentRowIndex < rows.length - 1) {
+          setCurrentRowIndex(currentRowIndex + 1);
+        }
+      } else {
+        // 오른쪽으로 밀었을 때 → 이전 단으로
+        if (currentRowIndex > 0) {
+          setCurrentRowIndex(currentRowIndex - 1);
+        }
+      }
+    }
   };
 
   const toggleRowComplete = (index) => {
@@ -577,263 +617,157 @@ export default function KnittingMode({ recipe, project, onClose }) {
     );
   }
 
-  // 갤러리 형식
+  // ===== 갤러리 모드 =====
+  // 기획서에 맞춘 새로운 갤러리 모드
   return (
-    <div className="fixed inset-0 bg-white z-50 flex flex-col landscape:flex-row">
-      {/* 드로워 메뉴 */}
-      <div
-        className={`fixed left-0 top-0 bottom-0 w-64 bg-white border-r z-30 transform transition-transform duration-300 ${
-          drawerOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
-      >
-        <div className="p-4 border-b">
-          <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-gray-800">Pattern</h3>
-            <button
-              onClick={() => setDrawerOpen(false)}
-              className="text-gray-400 hover:text-gray-600 text-xl"
-            >
-              ×
-            </button>
-          </div>
-        </div>
-        <div className="overflow-y-auto h-full pb-20">
-          <div className="p-2">
-            {sections.map((section, sectionIndex) => {
-              const isExpanded = expandedSections.has(sectionIndex);
-              
-              return (
-                <div key={sectionIndex} className="mb-2">
-                  <button
-                    onClick={() => {
-                      const newExpanded = new Set(expandedSections);
-                      if (newExpanded.has(sectionIndex)) {
-                        newExpanded.delete(sectionIndex);
-                      } else {
-                        newExpanded.add(sectionIndex);
-                      }
-                      setExpandedSections(newExpanded);
-                    }}
-                    className="w-full text-left px-3 py-2 font-medium text-gray-800 hover:bg-gray-50 rounded-lg flex items-center justify-between"
-                  >
-                    <span>{section.name}</span>
-                    <span className="text-gray-400 text-xs">{isExpanded ? '▼' : '▶'}</span>
-                  </button>
-                  {isExpanded && (
-                    <div className="ml-2 space-y-0.5">
-                      {section.rows.map((rowData) => {
-                        const index = rowData.index;
-                        const isActive = currentRowIndex === index;
-                        const isCompleted = completedRows.has(index);
-                        const rowNumber = rowData.number || index + 1;
-                        
-                        return (
-                          <button
-                            key={index}
-                            onClick={() => {
-                              setCurrentRowIndex(index);
-                              setDrawerOpen(false);
-                            }}
-                            className={`w-full text-left px-3 py-1.5 rounded text-sm transition-colors flex items-center gap-2 ${
-                              isActive
-                                ? 'bg-white text-black font-medium'
-                                : isCompleted
-                                ? 'text-gray-600 hover:bg-gray-50'
-                                : 'text-gray-600 hover:bg-gray-50'
-                            }`}
-                          >
-                            <span className={`w-4 h-4 flex items-center justify-center ${
-                              isCompleted ? 'text-green-500' : 'text-gray-300'
-                            }`}>
-                              {isCompleted ? '✓' : ''}
-                            </span>
-                            <span>
-                              R{rowNumber} {rowData.text.includes('줄이기') && '줄이기'}
-                              {rowData.text.includes('늘리기') && '늘리기'}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* 메인 콘텐츠 */}
-      <div className="flex-1 flex flex-col">
-        {/* 헤더 - 플로팅 버튼들만 */}
-        <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-20 pointer-events-none">
+    <div className="fixed inset-0 bg-gray-900 z-50 flex flex-col">
+      {/* ===== 1. 상단 바 (우측 상단에 완료 버튼 + 닫기 버튼) ===== */}
+      <div className="absolute top-0 left-0 right-0 z-20 pointer-events-none">
+        <div className="flex items-center justify-between p-4">
+          {/* 왼쪽: 목록 버튼 */}
           <button
-            onClick={() => setDrawerOpen(!drawerOpen)}
-            className="text-white hover:text-gray-200 text-xl bg-black/30 backdrop-blur-sm rounded-full w-10 h-10 flex items-center justify-center pointer-events-auto"
+            onClick={() => setMode('list')}
+            className="pointer-events-auto bg-black/50 backdrop-blur-sm text-white px-4 py-2 rounded-full text-sm font-medium hover:bg-black/70 transition-colors"
           >
-            ☰
+            ← 목록
           </button>
+
+          {/* 오른쪽: 완료 버튼 + 닫기 버튼 */}
           <div className="flex items-center gap-2 pointer-events-auto">
+            {/* 단 완료 버튼 - 기획서: 우측 상단 위치 */}
             <button
-              onClick={() => setMode('list')}
-              className="text-white hover:text-gray-200 text-sm bg-black/30 backdrop-blur-sm px-3 py-1.5 rounded-full"
+              onClick={() => toggleRowComplete(currentRowIndex)}
+              className={`px-5 py-2 rounded-full font-semibold text-sm transition-colors ${
+                completedRows.has(currentRowIndex)
+                  ? 'bg-green-500 text-white hover:bg-green-600'
+                  : 'bg-yellow-400 text-black hover:bg-yellow-500'
+              }`}
             >
-              목록
+              {completedRows.has(currentRowIndex) 
+                ? `${currentRowIndex + 1}단 완료됨 ✓` 
+                : `${currentRowIndex + 1}단 완료`}
             </button>
+
+            {/* 닫기 버튼 */}
             <button
               onClick={onClose}
-              className="text-white hover:text-gray-200 text-xl bg-black/30 backdrop-blur-sm rounded-full w-10 h-10 flex items-center justify-center"
+              className="bg-black/50 backdrop-blur-sm text-white rounded-full w-9 h-9 flex items-center justify-center hover:bg-black/70 transition-colors text-xl"
             >
               ×
             </button>
           </div>
         </div>
+      </div>
 
-        {/* 자막 영역 - 상단 고정 */}
-        <div className="absolute top-16 left-0 right-0 px-4 z-10 pointer-events-none">
-          <div className="max-w-4xl mx-auto space-y-2">
-            {/* 도안 설명 박스 */}
-            <div className="bg-black/80 backdrop-blur-sm text-white px-4 py-3 rounded-lg">
-              <p className="text-sm font-mono leading-relaxed">
-                {rows[currentRowIndex] || ''}
-              </p>
-            </div>
-            {/* 메모 박스 */}
-            {recipe?.additional_note && (
-              <div className="bg-yellow-400 text-black px-4 py-3 rounded-lg">
-                <p className="text-sm leading-relaxed">{recipe.additional_note}</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* 스와이프 영역 */}
+      {/* ===== 2. 메인 콘텐츠: 도안 이미지/영상 ===== */}
+      <div 
+        className="flex-1 relative overflow-hidden"
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+      >
+        {/* 스와이프 가능한 슬라이더 */}
         <div
-          className="flex-1 overflow-hidden relative"
-          onTouchStart={onTouchStart}
-          onTouchMove={onTouchMove}
-          onTouchEnd={onTouchEnd}
+          className="absolute inset-0 flex transition-transform duration-300"
+          style={{
+            transform: `translateX(-${currentRowIndex * 100}%)`,
+          }}
         >
-          <div
-            className="absolute inset-0 flex transition-transform duration-300"
-            style={{
-              transform: `translateX(-${currentRowIndex * 100}%)`,
-            }}
-          >
-            {rows.map((row, index) => (
-              <div
-                key={index}
-                className="min-w-full h-full flex items-center justify-center overflow-hidden bg-gray-900"
-                style={{ touchAction: 'pan-x' }}
-              >
-                {/* 배경 이미지 - 뜨개질 손 이미지 */}
+          {rows.map((row, index) => (
+            <div
+              key={index}
+              className="min-w-full h-full flex items-center justify-center bg-gray-900"
+            >
+              {/* 배경 이미지 - 회색 그라데이션 */}
+              <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900" />
+              
+              {/* 도안 이미지가 있으면 표시 */}
+              {recipe?.pattern_images && recipe.pattern_images[index] && (
+                <img
+                  src={recipe.pattern_images[index]}
+                  alt={`${index + 1}단 도안`}
+                  className="absolute inset-0 w-full h-full object-contain"
+                />
+              )}
+              
+              {/* 유튜브 영상이 있고 첫 단이면 표시 */}
+              {recipe?.source_url && index === 0 && (
                 <div className="absolute inset-0">
-                  <img
-                    src="/crochet-hands-bg.jpg"
-                    alt="뜨개질 배경"
-                    className="w-full h-full object-cover"
-                    style={{ 
-                      objectFit: 'cover',
-                      opacity: 0.3
-                    }}
-                    onError={(e) => {
-                      // 이미지가 없으면 그라데이션 배경으로 대체
-                      e.target.style.display = 'none';
-                      const parent = e.target.parentElement;
-                      if (parent) {
-                        parent.className = 'absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900';
-                      }
-                    }}
+                  <iframe
+                    src={recipe.source_url.includes('youtube.com') || recipe.source_url.includes('youtu.be')
+                      ? `https://www.youtube.com/embed/${recipe.source_url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/)?.[1]}?autoplay=1&mute=1&loop=1`
+                      : recipe.source_url}
+                    title={recipe.title}
+                    frameBorder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                    className="w-full h-full"
                   />
                 </div>
-                
-                {/* 도안 이미지/비디오 오버레이 */}
-                <div className="absolute inset-0 z-0">
-                  {recipe?.pattern_images && recipe.pattern_images[index] ? (
-                    <img
-                      src={recipe.pattern_images[index]}
-                      alt={`${index + 1}단 도안`}
-                      className="w-full h-full object-cover opacity-50"
-                      onError={(e) => {
-                        e.target.style.display = 'none';
-                      }}
-                    />
-                  ) : recipe?.source_url && index === 0 ? (
-                    <div className="w-full h-full">
-                      <iframe
-                        src={recipe.source_url.includes('youtube.com') || recipe.source_url.includes('youtu.be')
-                          ? `https://www.youtube.com/embed/${recipe.source_url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/)?.[1]}?autoplay=1&mute=1&loop=1&playlist=${recipe.source_url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/)?.[1]}`
-                          : recipe.source_url}
-                        title={recipe.title}
-                        frameBorder="0"
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                        allowFullScreen
-                        className="w-full h-full"
-                      />
-                    </div>
-                  ) : null}
+              )}
+              
+              {/* 아무것도 없으면 안내 텍스트 */}
+              {!recipe?.pattern_images?.[index] && !(recipe?.source_url && index === 0) && (
+                <div className="text-white/50 text-center p-8">
+                  <p className="text-lg mb-2">도안 이미지 없음</p>
+                  <p className="text-sm">도안 텍스트를 참고해주세요</p>
                 </div>
-              </div>
-            ))}
-          </div>
+              )}
+            </div>
+          ))}
+        </div>
 
-          {/* 스와이프 네비게이션 */}
-          <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-2 z-10">
-            {rows.map((_, index) => (
-              <button
-                key={index}
-                onClick={() => setCurrentRowIndex(index)}
-                className={`w-2 h-2 rounded-full transition-all ${
-                  currentRowIndex === index
-                    ? 'bg-yarn-lavender w-8'
-                    : 'bg-gray-300'
-                }`}
-              />
-            ))}
-          </div>
-
-          {/* 좌우 화살표 */}
-          {currentRowIndex > 0 && (
-            <button
-              onClick={() => setCurrentRowIndex(currentRowIndex - 1)}
-              className="absolute left-4 top-1/2 -translate-y-1/2 bg-gray-800/60 backdrop-blur-sm rounded-full w-12 h-12 flex items-center justify-center text-white shadow-lg hover:bg-gray-800/80 transition-colors z-10 pointer-events-auto"
-            >
-              ←
-            </button>
-          )}
-          {currentRowIndex < rows.length - 1 && (
-            <button
-              onClick={() => setCurrentRowIndex(currentRowIndex + 1)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 bg-gray-800/60 backdrop-blur-sm rounded-full w-12 h-12 flex items-center justify-center text-white shadow-lg hover:bg-gray-800/80 transition-colors z-10 pointer-events-auto"
-            >
-              →
-            </button>
-          )}
-
-          {/* Complete 버튼 - 우측 하단 */}
+        {/* 좌우 화살표 버튼 */}
+        {currentRowIndex > 0 && (
           <button
-            onClick={() => toggleRowComplete(currentRowIndex)}
-            className={`absolute bottom-6 right-6 px-6 py-3 rounded-lg font-semibold text-lg shadow-lg transition-colors z-10 pointer-events-auto ${
-              completedRows.has(currentRowIndex)
-                ? 'bg-green-500 text-white hover:bg-green-600'
-                : 'bg-yellow-400 text-black hover:bg-yellow-500'
-            }`}
+            onClick={() => setCurrentRowIndex(currentRowIndex - 1)}
+            className="absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 backdrop-blur-sm rounded-full w-12 h-12 flex items-center justify-center text-white text-2xl hover:bg-black/70 transition-colors z-10"
           >
-            <span className="flex items-center gap-2">
-              <span>✓</span>
-              <span>Complete</span>
-            </span>
+            ←
           </button>
+        )}
+        {currentRowIndex < rows.length - 1 && (
+          <button
+            onClick={() => setCurrentRowIndex(currentRowIndex + 1)}
+            className="absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 backdrop-blur-sm rounded-full w-12 h-12 flex items-center justify-center text-white text-2xl hover:bg-black/70 transition-colors z-10"
+          >
+            →
+          </button>
+        )}
+      </div>
+
+      {/* ===== 3. 하단 고정: 현재 단 정보 (기획서 요구사항) ===== */}
+      <div className="bg-black/80 backdrop-blur-sm text-white px-6 py-4 z-20">
+        <div className="max-w-4xl mx-auto">
+          {/* 현재 단 / 전체 단 수 */}
+          <div className="flex items-baseline gap-2 mb-2">
+            <span className="text-3xl font-bold">{currentRowIndex + 1}</span>
+            <span className="text-xl text-white/70">/ {rows.length}단</span>
+          </div>
+          
+          {/* 가이드 텍스트 (도안 내용) */}
+          <p className="text-sm leading-relaxed text-white/90">
+            {rows[currentRowIndex] || '도안 정보 없음'}
+          </p>
+          
+          {/* 추가 메모가 있으면 표시 */}
+          {recipe?.additional_note && (
+            <div className="mt-3 bg-yellow-400/20 border border-yellow-400/30 rounded-lg px-3 py-2">
+              <p className="text-xs text-yellow-200 leading-relaxed">
+                💡 {recipe.additional_note}
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* 드로워 오버레이 */}
-      {drawerOpen && (
+      {/* ===== 4. 하단 진행 바 (선택사항) ===== */}
+      <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20 z-30">
         <div
-          className="fixed inset-0 bg-black/50 z-20"
-          onClick={() => setDrawerOpen(false)}
+          className="h-full bg-primary transition-all duration-300"
+          style={{ width: `${((currentRowIndex + 1) / rows.length) * 100}%` }}
         />
-      )}
+      </div>
     </div>
   );
 }
